@@ -1,3 +1,10 @@
+/**
+ * 【注意: 不採用ファイル】
+ * このファイルは現在の階層構造で使用されていません。
+ * 現在のナビゲーション階層は以下の通りです:
+ * HOME画面 → チャンネル一覧(/channels) → スレッド一覧(/channels/[channelId]) → スレッド内チャット
+ */
+
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';

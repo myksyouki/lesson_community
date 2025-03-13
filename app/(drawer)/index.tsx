@@ -1,8 +1,8 @@
 // app/index.tsx
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, FlatList } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, FlatList, RefreshControl, Animated, Easing, Dimensions } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import { Card, Searchbar, Button, Chip, useTheme, ActivityIndicator, FAB } from 'react-native-paper';
+import { Card, Searchbar, Button, Chip, useTheme, ActivityIndicator, FAB, IconButton } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '../../contexts/UserContext';
@@ -89,6 +89,144 @@ const INSTRUMENT_CATEGORIES = [
   { id: 'percussion', name: 'パーカッション', icon: 'musical-notes', color: '#3DB0FF' },
 ];
 
+// 拡張されたチャンネル型定義
+interface ExtendedChannel {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  members: number;
+  threads: any[];
+  icon?: string;
+  unreadCount?: number;
+}
+
+// アニメーション付きのアイテムコンポーネント
+const AnimatedChannelItem = React.memo(({ item, index, currentInstrument, router }: any) => {
+  const itemFade = useRef(new Animated.Value(0)).current;
+  const itemSlide = useRef(new Animated.Value(30)).current;
+  
+  useEffect(() => {
+    const delay = index * 100;
+    Animated.parallel([
+      Animated.timing(itemFade, {
+        toValue: 1,
+        duration: 500,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(itemSlide, {
+        toValue: 0,
+        duration: 500,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index, itemFade, itemSlide]);
+  
+  return (
+    <Animated.View
+      style={{
+        opacity: itemFade,
+        transform: [{ translateY: itemSlide }],
+      }}
+    >
+      <TouchableOpacity
+        onPress={() => router.push(`/channels/${item.id}`)}
+        style={styles.recommendedCardContainer}
+      >
+        <Card style={styles.recommendedCard}>
+          <Card.Content style={styles.recommendedContent}>
+            <View 
+              style={[
+                styles.channelIconContainer,
+                { backgroundColor: `${currentInstrument?.color}20` || '#7F3DFF20' }
+              ]}
+            >
+              <Ionicons 
+                name={(item.icon || 'chatbubbles') as any} 
+                size={24} 
+                color={currentInstrument?.color || '#7F3DFF'} 
+              />
+            </View>
+            
+            <Text style={styles.recommendedName} numberOfLines={1}>{item.name}</Text>
+            
+            <View style={styles.channelStat}>
+              <Ionicons name="people" size={12} color="#AAAAAA" />
+              <Text style={styles.channelMembers}>{item.members}人</Text>
+            </View>
+          </Card.Content>
+        </Card>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+// アニメーション付きのスレッドアイテムコンポーネント
+const AnimatedThreadItem = React.memo(({ thread, index, currentInstrument, router }: any) => {
+  const itemFade = useRef(new Animated.Value(0)).current;
+  const itemSlide = useRef(new Animated.Value(30)).current;
+  
+  useEffect(() => {
+    const delay = 300 + index * 100; // おすすめチャンネルの後に表示
+    Animated.parallel([
+      Animated.timing(itemFade, {
+        toValue: 1,
+        duration: 500,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(itemSlide, {
+        toValue: 0,
+        duration: 500,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index, itemFade, itemSlide]);
+  
+  return (
+    <Animated.View
+      style={{
+        opacity: itemFade,
+        transform: [{ translateY: itemSlide }],
+        marginBottom: 12,
+      }}
+    >
+      <TouchableOpacity
+        onPress={() => router.push(`/threads/${thread.channelId}/${thread.id}`)}
+        style={styles.threadCardContainer}
+      >
+        <Card style={styles.threadCard}>
+          <Card.Content style={styles.threadContent}>
+            <View style={styles.threadHeader}>
+              <Text style={styles.threadTitle} numberOfLines={2}>{thread.title}</Text>
+              <View style={styles.likesContainer}>
+                <Ionicons name="heart" size={14} color={currentInstrument?.color || '#7F3DFF'} />
+                <Text style={styles.likesCount}>{thread.likes}</Text>
+              </View>
+            </View>
+            
+            <Text style={styles.threadContentText} numberOfLines={2}>{thread.content}</Text>
+            
+            <View style={styles.threadFooter}>
+              <Text style={styles.channelLabel}>{thread.channelName}</Text>
+              <View style={styles.threadStats}>
+                <View style={styles.threadStat}>
+                  <Ionicons name="chatbubble-outline" size={12} color="#AAAAAA" />
+                  <Text style={styles.statText}>{thread.replies}</Text>
+                </View>
+                <Text style={styles.threadDate}>{thread.createdAt}</Text>
+              </View>
+            </View>
+          </Card.Content>
+        </Card>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
 export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -98,6 +236,12 @@ export default function HomeScreen() {
   const { selectedCategories } = userState;
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // アニメーション用の値
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
   
   // 選択されている楽器カテゴリー（最初の1つを使用）
   const activeCategory = selectedCategories.length > 0 ? selectedCategories[0] : 'flute';
@@ -106,7 +250,24 @@ export default function HomeScreen() {
   const currentInstrument = INSTRUMENT_CATEGORIES.find(cat => cat.id === activeCategory);
   
   // 現在のカテゴリーのチャンネル一覧
-  const categoryChannels = getChannelsByCategory(activeCategory);
+  const categoryChannels = getChannelsByCategory(activeCategory) as ExtendedChannel[];
+  
+  // おすすめチャンネルを取得（メンバー数が多い順に3つ）
+  const recommendedChannels = [...categoryChannels]
+    .sort((a, b) => b.members - a.members)
+    .slice(0, 3);
+  
+  // HOTスレッドを取得（いいね数が多い順に5つ）
+  const hotThreads = categoryChannels
+    .flatMap(channel => 
+      channel.threads.map(thread => ({
+        ...thread,
+        channelId: channel.id,
+        channelName: channel.name
+      }))
+    )
+    .sort((a, b) => b.likes - a.likes)
+    .slice(0, 5);
   
   // 検索フィルター
   const filteredChannels = searchQuery.trim() 
@@ -127,99 +288,144 @@ export default function HomeScreen() {
       }, 300);
     }
   };
+  
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    // リフレッシュ処理
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
+  }, []);
+  
+  // 画面表示時のアニメーション
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }),
+    ]).start();
+  }, [fadeAnim, slideAnim, scaleAnim]);
+
+  // FlatListのrenderItemコールバック
+  const renderChannelItem = useCallback(({ item, index }: { item: ExtendedChannel; index: number }) => (
+    <AnimatedChannelItem 
+      item={item} 
+      index={index} 
+      currentInstrument={currentInstrument} 
+      router={router} 
+    />
+  ), [currentInstrument, router]);
+
+  // チャンネル一覧画面に遷移
+  const navigateToChannelList = () => {
+    router.push('/channels');
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="light" />
       
-      {/* 楽器バッジとタイトル */}
-      <View style={styles.subHeader}>
-        <View style={styles.instrumentBadge}>
-          <Ionicons 
-            name={(currentInstrument?.icon || 'musical-notes') as any} 
-            size={24} 
-            color={currentInstrument?.color || '#7F3DFF'} 
-          />
-          <Text style={styles.instrumentName}>{currentInstrument?.name || '楽器'}</Text>
-        </View>
+      {/* 検索バーとチャンネル一覧ボタン */}
+      <View style={styles.searchContainer}>
+        <Searchbar
+          placeholder="チャンネルを検索"
+          onChangeText={onChangeSearch}
+          value={searchQuery}
+          style={styles.searchBar}
+          iconColor={currentInstrument?.color || '#7F3DFF'}
+          onSubmitEditing={handleSearch}
+          loading={isLoading}
+          inputStyle={{ color: '#FFFFFF', fontSize: 14 }}
+          placeholderTextColor="#888888"
+        />
         
-        <Text style={styles.title}>チャンネル一覧</Text>
+        <TouchableOpacity 
+          style={[styles.channelListButton, { backgroundColor: currentInstrument?.color || '#7F3DFF' }]}
+          onPress={navigateToChannelList}
+        >
+          <Ionicons name="list" size={18} color="#FFFFFF" />
+        </TouchableOpacity>
       </View>
 
-      <Searchbar
-        placeholder="チャンネルを検索"
-        onChangeText={onChangeSearch}
-        value={searchQuery}
-        style={styles.searchBar}
-        iconColor={currentInstrument?.color || '#7F3DFF'}
-        onSubmitEditing={handleSearch}
-        loading={isLoading}
-        inputStyle={{ color: '#FFFFFF' }}
-        placeholderTextColor="#888888"
-      />
-
-      <FlatList
-        data={filteredChannels}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.channelList}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => router.push(`/channels/${item.id}`)}
-            style={styles.channelCardContainer}
-          >
-            <Card style={styles.channelCard}>
-              <Card.Content style={styles.channelContent}>
-                <View 
-                  style={[
-                    styles.channelIconContainer,
-                    { backgroundColor: `${currentInstrument?.color}20` || '#7F3DFF20' }
-                  ]}
-                >
-                  <Ionicons 
-                    name={(item.icon || 'chatbubbles') as any} 
-                    size={28} 
-                    color={currentInstrument?.color || '#7F3DFF'} 
-                  />
-                </View>
-                
-                <View style={styles.channelInfo}>
-                  <View style={styles.channelHeader}>
-                    <Text style={styles.channelName}>{item.name}</Text>
-                    {item.threads && item.threads.length > 0 && (
-                      <Chip 
-                        mode="flat" 
-                        style={[styles.unreadChip, { backgroundColor: currentInstrument?.color || '#7F3DFF' }]}
-                      >
-                        {item.threads.length}
-                      </Chip>
-                    )}
-                  </View>
-                  
-                  <Text style={styles.channelDescription}>{item.description}</Text>
-                  
-                  <View style={styles.channelFooter}>
-                    <View style={styles.channelStat}>
-                      <Ionicons name="people" size={14} color="#AAAAAA" />
-                      <Text style={styles.channelMembers}>{item.members}人</Text>
-                    </View>
-                    
-                    {item.unreadCount > 0 && (
-                      <View style={styles.channelStat}>
-                        <Ionicons name="chatbubble-ellipses" size={14} color="#AAAAAA" />
-                        <Text style={styles.channelMembers}>{item.unreadCount}件の未読</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </Card.Content>
-            </Card>
-          </TouchableOpacity>
-        )}
-      />
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#FFFFFF"
+          />
+        }
+      >
+        {/* おすすめチャンネル */}
+        <Animated.View 
+          style={[
+            styles.sectionContainer, 
+            { 
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ] 
+            }
+          ]}
+        >
+          <Text style={styles.sectionTitle}>おすすめチャンネル</Text>
+          <FlatList
+            data={recommendedChannels}
+            keyExtractor={(item) => item.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.recommendedList}
+            renderItem={renderChannelItem}
+          />
+        </Animated.View>
+        
+        {/* HOTスレッド */}
+        <Animated.View 
+          style={[
+            styles.sectionContainer, 
+            { 
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ] 
+            }
+          ]}
+        >
+          <Text style={styles.sectionTitle}>HOTスレッド</Text>
+          {hotThreads.map((thread, index) => (
+            <AnimatedThreadItem
+              key={`${thread.channelId}-${thread.id}`}
+              thread={thread}
+              index={index}
+              currentInstrument={currentInstrument}
+              router={router}
+            />
+          ))}
+        </Animated.View>
+      </ScrollView>
       
       {/* 五度圏メニューのFAB */}
       <MusicFAB />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -227,78 +433,182 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121212',
+    paddingTop: 10,
   },
-  subHeader: {
-    paddingTop: 20,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-  },
-  instrumentBadge: {
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#2A2A2A',
-    paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 24,
+    marginBottom: 10,
+  },
+  searchBar: {
+    flex: 1,
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    elevation: 2,
+    height: 40,
+    fontSize: 14,
+  },
+  channelListButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+    elevation: 2,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingTop: 10,
+    paddingBottom: 80, // FABのスペースを確保
+  },
+  sectionContainer: {
+    marginBottom: 20,
+    paddingHorizontal: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  recommendedList: {
+    paddingRight: 16,
+  },
+  recommendedCardContainer: {
+    width: 140,
+    marginRight: 12,
+  },
+  recommendedCard: {
+    backgroundColor: '#1E1E1E',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 0,
+  },
+  recommendedContent: {
+    alignItems: 'center',
+    padding: 12,
+  },
+  recommendedName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginTop: 8,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  threadCardContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
     elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
   },
-  instrumentName: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    marginLeft: 8,
-    fontSize: 16,
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  searchBar: {
-    marginHorizontal: 16,
-    marginVertical: 16,
+  threadCard: {
     backgroundColor: '#1E1E1E',
-    borderRadius: 16,
-    elevation: 2,
-    height: 50,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 0,
   },
-  channelList: {
-    paddingHorizontal: 16,
-    paddingBottom: 80, // FABのスペースを確保
+  threadContent: {
+    padding: 14,
+  },
+  threadHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  threadTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    flex: 1,
+    marginRight: 8,
+  },
+  likesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  likesCount: {
+    color: '#FFFFFF',
+    marginLeft: 3,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  threadContentText: {
+    fontSize: 13,
+    color: '#CCCCCC',
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+  threadFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  channelLabel: {
+    fontSize: 11,
+    color: '#AAAAAA',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  threadStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  threadStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  statText: {
+    fontSize: 11,
+    color: '#AAAAAA',
+    marginLeft: 3,
+  },
+  threadDate: {
+    fontSize: 11,
+    color: '#AAAAAA',
   },
   channelCardContainer: {
-    marginBottom: 16,
-    borderRadius: 16,
+    marginBottom: 12,
+    borderRadius: 12,
     overflow: 'hidden',
-    elevation: 4,
+    elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
-    shadowRadius: 3,
+    shadowRadius: 2,
   },
   channelCard: {
     backgroundColor: '#1E1E1E',
-    borderRadius: 16,
+    borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 0,
   },
   channelContent: {
     flexDirection: 'row',
-    padding: 16,
+    padding: 14,
   },
   channelIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   channelInfo: {
     flex: 1,
@@ -307,21 +617,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   channelName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   unreadChip: {
-    height: 24,
-    borderRadius: 12,
+    height: 20,
+    borderRadius: 10,
   },
   channelDescription: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#CCCCCC',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   channelFooter: {
     flexDirection: 'row',
@@ -330,11 +640,11 @@ const styles = StyleSheet.create({
   channelStat: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   channelMembers: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#AAAAAA',
-    marginLeft: 4,
+    marginLeft: 3,
   },
 });

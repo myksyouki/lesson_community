@@ -33,7 +33,84 @@ interface DataContextType {
   getThread: (channelId: string, threadId: string) => Thread | undefined;
   toggleLike: (channelId: string, threadId: string) => void;
   createThread: (channelId: string, threadData: { title: string; content: string; author: { id: string; name: string; avatar: string; } }) => Promise<void>;
+  createChannel: (channelData: { name: string; description: string; category: string; creatorId: string }) => Promise<string>;
+  deleteChannel: (channelId: string) => Promise<boolean>;
+  getUserCreatedChannels: (userId: string) => Channel[];
 }
+
+// フルート用の追加サンプルスレッド
+const additionalFluteThreads: Thread[] = [
+  {
+    id: 'thread101',
+    title: 'フルートの音色を改善するには',
+    content: '音色をより豊かにするための練習方法やアプローチを教えてください。特に中音域の響きに悩んでいます。',
+    author: {
+      id: 'user101',
+      name: '河野美咲',
+      avatar: 'https://randomuser.me/api/portraits/women/41.jpg',
+    },
+    createdAt: '2023-08-15T10:30:00Z',
+    likes: 28,
+    replies: 12,
+    isLiked: false,
+  },
+  {
+    id: 'thread102',
+    title: 'フルートのビブラート習得法',
+    content: 'ビブラートの付け方がわかりません。効果的な練習方法や上達のコツを教えていただけませんか？',
+    author: {
+      id: 'user102',
+      name: '田村健太',
+      avatar: 'https://randomuser.me/api/portraits/men/42.jpg',
+    },
+    createdAt: '2023-08-17T14:45:00Z',
+    likes: 35,
+    replies: 18,
+    isLiked: true,
+  },
+  {
+    id: 'thread103',
+    title: 'フルートの指使いについて',
+    content: '高音域のF#とG#の指使いで迷っています。皆さんはどのような指使いを使っていますか？',
+    author: {
+      id: 'user103',
+      name: '佐々木優',
+      avatar: 'https://randomuser.me/api/portraits/women/43.jpg',
+    },
+    createdAt: '2023-08-19T09:20:00Z',
+    likes: 22,
+    replies: 15,
+    isLiked: false,
+  },
+  {
+    id: 'thread104',
+    title: 'フルートの手入れ方法',
+    content: '新しくフルートを購入しました。長持ちさせるための日々のお手入れ方法を教えてください。',
+    author: {
+      id: 'user104',
+      name: '山下拓也',
+      avatar: 'https://randomuser.me/api/portraits/men/44.jpg',
+    },
+    createdAt: '2023-08-21T16:10:00Z',
+    likes: 19,
+    replies: 10,
+    isLiked: true,
+  },
+  {
+    id: 'thread105',
+    title: 'フルートのオクターブ練習',
+    content: 'オクターブ間の移動をスムーズにするための練習方法を探しています。おすすめのエチュードはありますか？',
+    author: {
+      id: 'user105',
+      name: '中島真由子',
+      avatar: 'https://randomuser.me/api/portraits/women/45.jpg',
+    },
+    createdAt: '2023-08-23T11:35:00Z',
+    likes: 26,
+    replies: 14,
+    isLiked: false,
+  },
+];
 
 // サンプルデータ
 const sampleThreads: Thread[] = [
@@ -517,6 +594,243 @@ const sampleChannels: Channel[] = [
     members: 876,
     threads: percussionThreads,
   },
+  {
+    id: 'channel13',
+    name: 'フルートコンクール情報',
+    description: 'フルートのコンクールや演奏会の情報を共有するチャンネルです。',
+    category: 'flute',
+    members: 723,
+    threads: [
+      {
+        id: 'thread106',
+        title: '全日本学生フルートコンクール',
+        content: '今年の全日本学生フルートコンクールに参加予定の方いますか？課題曲の攻略法を共有しましょう。',
+        author: {
+          id: 'user106',
+          name: '高橋美穂',
+          avatar: 'https://randomuser.me/api/portraits/women/46.jpg',
+        },
+        createdAt: '2023-08-25T10:15:00Z',
+        likes: 31,
+        replies: 17,
+        isLiked: false,
+      },
+      {
+        id: 'thread107',
+        title: '地方のフルートコンクール情報',
+        content: '地方で開催されるフルートコンクールの情報を集めています。皆さんの地域のコンクール情報を教えてください。',
+        author: {
+          id: 'user107',
+          name: '伊藤誠',
+          avatar: 'https://randomuser.me/api/portraits/men/47.jpg',
+        },
+        createdAt: '2023-08-27T14:30:00Z',
+        likes: 24,
+        replies: 13,
+        isLiked: true,
+      },
+      {
+        id: 'thread108',
+        title: 'オンラインコンクールの体験談',
+        content: 'オンラインフルートコンクールに参加した方、体験談を聞かせてください。録音のコツなども知りたいです。',
+        author: {
+          id: 'user108',
+          name: '鈴木麻衣',
+          avatar: 'https://randomuser.me/api/portraits/women/48.jpg',
+        },
+        createdAt: '2023-08-29T09:45:00Z',
+        likes: 19,
+        replies: 11,
+        isLiked: false,
+      },
+      {
+        id: 'thread109',
+        title: 'コンクール審査員の視点',
+        content: 'フルートコンクールの審査員経験がある方、審査で重視するポイントを教えていただけませんか？',
+        author: {
+          id: 'user109',
+          name: '佐藤雅彦',
+          avatar: 'https://randomuser.me/api/portraits/men/49.jpg',
+        },
+        createdAt: '2023-08-31T16:20:00Z',
+        likes: 27,
+        replies: 15,
+        isLiked: true,
+      },
+      {
+        id: 'thread110',
+        title: 'コンクール用の楽譜選び',
+        content: 'フルートコンクールで印象に残る曲選びのコツを教えてください。定番曲と新曲、どちらが有利でしょうか？',
+        author: {
+          id: 'user110',
+          name: '渡辺さくら',
+          avatar: 'https://randomuser.me/api/portraits/women/50.jpg',
+        },
+        createdAt: '2023-09-02T11:10:00Z',
+        likes: 22,
+        replies: 12,
+        isLiked: false,
+      },
+    ],
+  },
+  {
+    id: 'channel14',
+    name: 'フルート奏法研究',
+    description: 'フルートの様々な奏法について研究・議論するチャンネルです。',
+    category: 'flute',
+    members: 654,
+    threads: [
+      {
+        id: 'thread111',
+        title: 'フラッタータンギングのコツ',
+        content: 'フラッタータンギングがうまくできません。効果的な練習方法や上達のコツを教えてください。',
+        author: {
+          id: 'user111',
+          name: '中村健太',
+          avatar: 'https://randomuser.me/api/portraits/men/51.jpg',
+        },
+        createdAt: '2023-09-04T09:30:00Z',
+        likes: 25,
+        replies: 14,
+        isLiked: false,
+      },
+      {
+        id: 'thread112',
+        title: 'ダブルタンギングの速度向上',
+        content: 'ダブルタンギングの速度を上げるための効果的な練習方法を教えてください。',
+        author: {
+          id: 'user112',
+          name: '小林美咲',
+          avatar: 'https://randomuser.me/api/portraits/women/52.jpg',
+        },
+        createdAt: '2023-09-06T14:15:00Z',
+        likes: 29,
+        replies: 16,
+        isLiked: true,
+      },
+      {
+        id: 'thread113',
+        title: 'サーキュラーブリージングの習得',
+        content: 'サーキュラーブリージング（循環呼吸）の習得方法について教えてください。基本的な練習から始めたいです。',
+        author: {
+          id: 'user113',
+          name: '田中雄一',
+          avatar: 'https://randomuser.me/api/portraits/men/53.jpg',
+        },
+        createdAt: '2023-09-08T10:45:00Z',
+        likes: 31,
+        replies: 18,
+        isLiked: false,
+      },
+      {
+        id: 'thread114',
+        title: 'ハーモニクスの出し方',
+        content: 'フルートのハーモニクス（倍音）をきれいに出すコツを教えてください。特に高い倍音が安定しません。',
+        author: {
+          id: 'user114',
+          name: '山本恵',
+          avatar: 'https://randomuser.me/api/portraits/women/54.jpg',
+        },
+        createdAt: '2023-09-10T15:30:00Z',
+        likes: 24,
+        replies: 13,
+        isLiked: true,
+      },
+      {
+        id: 'thread115',
+        title: 'マルチフォニクスの研究',
+        content: '現代音楽でよく使われるマルチフォニクス（多重音）の出し方と練習方法について情報を共有しましょう。',
+        author: {
+          id: 'user115',
+          name: '佐々木拓也',
+          avatar: 'https://randomuser.me/api/portraits/men/55.jpg',
+        },
+        createdAt: '2023-09-12T11:20:00Z',
+        likes: 27,
+        replies: 15,
+        isLiked: false,
+      },
+    ],
+  },
+  {
+    id: 'channel15',
+    name: 'フルート機材談義',
+    description: 'フルートの機材（楽器、アクセサリー）について情報交換するチャンネルです。',
+    category: 'flute',
+    members: 589,
+    threads: [
+      {
+        id: 'thread116',
+        title: '銀製と金製フルートの違い',
+        content: '銀製と金製フルートの音色の違いについて、実際に両方使っている方の意見を聞かせてください。',
+        author: {
+          id: 'user116',
+          name: '加藤裕子',
+          avatar: 'https://randomuser.me/api/portraits/women/56.jpg',
+        },
+        createdAt: '2023-09-14T10:10:00Z',
+        likes: 33,
+        replies: 19,
+        isLiked: false,
+      },
+      {
+        id: 'thread117',
+        title: 'おすすめのフルートケース',
+        content: '軽量で保護性能の高いフルートケースを探しています。おすすめのブランドや製品を教えてください。',
+        author: {
+          id: 'user117',
+          name: '松田健',
+          avatar: 'https://randomuser.me/api/portraits/men/57.jpg',
+        },
+        createdAt: '2023-09-16T13:45:00Z',
+        likes: 26,
+        replies: 14,
+        isLiked: true,
+      },
+      {
+        id: 'thread118',
+        title: 'ヘッドジョイントの選び方',
+        content: 'フルートのヘッドジョイントを新調しようと思っています。選び方のポイントを教えてください。',
+        author: {
+          id: 'user118',
+          name: '井上真理',
+          avatar: 'https://randomuser.me/api/portraits/women/58.jpg',
+        },
+        createdAt: '2023-09-18T09:30:00Z',
+        likes: 29,
+        replies: 16,
+        isLiked: false,
+      },
+      {
+        id: 'thread119',
+        title: 'フルートスタンドのおすすめ',
+        content: '安定性が高く、持ち運びにも便利なフルートスタンドを探しています。おすすめを教えてください。',
+        author: {
+          id: 'user119',
+          name: '斎藤健太',
+          avatar: 'https://randomuser.me/api/portraits/men/59.jpg',
+        },
+        createdAt: '2023-09-20T15:15:00Z',
+        likes: 22,
+        replies: 12,
+        isLiked: true,
+      },
+      {
+        id: 'thread120',
+        title: 'フルートのパッドの交換時期',
+        content: 'フルートのパッドはどのくらいの頻度で交換するべきでしょうか？交換のサインや目安を教えてください。',
+        author: {
+          id: 'user120',
+          name: '木村美咲',
+          avatar: 'https://randomuser.me/api/portraits/women/60.jpg',
+        },
+        createdAt: '2023-09-22T11:40:00Z',
+        likes: 25,
+        replies: 14,
+        isLiked: false,
+      },
+    ],
+  },
 ];
 
 // コンテキストの作成
@@ -612,6 +926,52 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return Promise.resolve();
   };
 
+  // チャンネル作成メソッド
+  const createChannel = async (channelData: { name: string; description: string; category: string; creatorId: string }): Promise<string> => {
+    // チャンネルIDの生成（通常はバックエンドで行われる）
+    const newChannelId = `${channelData.category}-${channelData.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+    
+    // 新しいチャンネルオブジェクトの作成
+    const newChannel: Channel = {
+      id: newChannelId,
+      name: channelData.name,
+      description: channelData.description,
+      category: channelData.category,
+      members: 1, // 作成者自身
+      threads: [], // 初期状態では空
+    };
+    
+    // チャンネル一覧に追加
+    setChannels(prev => [...prev, newChannel]);
+    
+    return newChannelId;
+  };
+
+  // チャンネル削除メソッド
+  const deleteChannel = async (channelId: string): Promise<boolean> => {
+    // 該当するチャンネルが存在するかチェック
+    const channelExists = channels.some(channel => channel.id === channelId);
+    
+    if (!channelExists) {
+      return false;
+    }
+    
+    // チャンネルを削除
+    setChannels(prev => prev.filter(channel => channel.id !== channelId));
+    
+    return true;
+  };
+
+  // ユーザーが作成したチャンネルを取得
+  const getUserCreatedChannels = (userId: string): Channel[] => {
+    // 実際のアプリケーションでは、チャンネルデータに作成者IDが含まれるようにして、
+    // そのIDでフィルタリングするべきです。このサンプルでは単純化のために
+    // 渡されたuserIdに基づいてフィルタリングする機能はダミーとします。
+    
+    // 実際のフィルタリングロジックは、チャンネルデータに適切なフィールドがある場合に実装します
+    return [];
+  };
+
   return (
     <DataContext.Provider
       value={{
@@ -621,6 +981,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         getThread,
         toggleLike,
         createThread,
+        createChannel,
+        deleteChannel,
+        getUserCreatedChannels,
       }}
     >
       {children}

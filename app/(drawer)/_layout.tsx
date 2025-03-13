@@ -1,152 +1,195 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, Animated, PanResponder, Dimensions, TouchableWithoutFeedback } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
+import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity, Text, View } from 'react-native';
-import { DrawerActions, useNavigation } from '@react-navigation/native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useRouter } from 'expo-router';
-import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
-import { Divider } from 'react-native-paper';
+import { useUser } from '../../contexts/UserContext';
+import SideMenu from '../../components/SideMenu';
+import { INSTRUMENT_COLORS } from '../../constants/Colors';
 
-// ハンバーガーメニューボタンコンポーネント
-function HamburgerButton() {
-  const navigation = useNavigation();
-  return (
-    <TouchableOpacity
-      onPress={() => navigation.dispatch(DrawerActions.toggleDrawer())}
-      style={{
-        width: 50,  // 幅を大きく
-        height: 50, // 高さを大きく
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginLeft: 8,
-      }}
-    >
-      <Ionicons name="menu" size={32} color="#FFFFFF" />
-    </TouchableOpacity>
-  );
+// 楽器カテゴリーの定義
+const INSTRUMENT_CATEGORIES = [
+  { id: 'flute', name: 'フルート', color: INSTRUMENT_COLORS.flute, icon: 'musical-note' },
+  { id: 'clarinet', name: 'クラリネット', color: INSTRUMENT_COLORS.clarinet, icon: 'musical-notes' },
+  { id: 'oboe', name: 'オーボエ', color: INSTRUMENT_COLORS.oboe, icon: 'musical-note' },
+  { id: 'fagotto', name: 'ファゴット', color: INSTRUMENT_COLORS.fagotto, icon: 'musical-notes' },
+  { id: 'saxophone', name: 'サックス', color: INSTRUMENT_COLORS.saxophone, icon: 'musical-note' },
+  { id: 'horn', name: 'ホルン', color: INSTRUMENT_COLORS.horn, icon: 'musical-notes' },
+  { id: 'euphonium', name: 'ユーフォニアム', color: INSTRUMENT_COLORS.euphonium, icon: 'musical-note' },
+  { id: 'trumpet', name: 'トランペット', color: INSTRUMENT_COLORS.trumpet, icon: 'musical-notes' },
+  { id: 'trombone', name: 'トロンボーン', color: INSTRUMENT_COLORS.trombone, icon: 'musical-note' },
+  { id: 'tuba', name: 'チューバ', color: INSTRUMENT_COLORS.tuba, icon: 'musical-notes' },
+  { id: 'percussion', name: 'パーカッション', color: INSTRUMENT_COLORS.percussion, icon: 'musical-note' },
+];
+
+// 楽器カテゴリーの型定義
+interface InstrumentCategory {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
 }
 
-// 設定ボタンコンポーネント
-function SettingsButton() {
-  const router = useRouter();
+export default function DrawerLayout() {
+  const { userState } = useUser();
+  const { selectedCategories } = userState;
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMenuExpanded, setIsMenuExpanded] = useState(false);
+  const { width: screenWidth } = Dimensions.get('window');
   
-  const handlePress = () => {
-    // 設定画面に遷移
-    router.push('/settings');
+  // 選択されている楽器カテゴリー（最初の1つを使用）
+  const activeCategory = selectedCategories.length > 0 ? selectedCategories[0] : 'flute';
+  
+  // 現在の楽器カテゴリー情報
+  const currentInstrument = INSTRUMENT_CATEGORIES.find((cat: InstrumentCategory) => cat.id === activeCategory);
+
+  // メニューを開く
+  const openMenu = () => {
+    setIsMenuOpen(true);
   };
-  
-  return (
-    <TouchableOpacity
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 16,
-      }}
-      onPress={handlePress}
-    >
-      <Ionicons name="settings-outline" size={24} color="#CCCCCC" style={{ marginRight: 32 }} />
-      <Text style={{ color: '#CCCCCC', fontSize: 16 }}>設定</Text>
-    </TouchableOpacity>
-  );
-}
 
-// カスタムヘッダー右側コンポーネント
-function HeaderRight() {
-  const router = useRouter();
-  
+  // メニューを閉じる
+  const closeMenu = () => {
+    setIsMenuExpanded(false);
+    setIsMenuOpen(false);
+  };
+
+  // スワイプジェスチャーの設定
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // メニューが閉じているか、部分的に開いている場合のみスワイプを検知
+        if (!isMenuOpen || (isMenuOpen && !isMenuExpanded)) {
+          // 右スワイプのみ検知
+          return gestureState.dx > 5 && Math.abs(gestureState.dy) < Math.abs(gestureState.dx);
+        }
+        return false;
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        if (gestureState.dx > 20 && !isMenuOpen) {
+          // 右スワイプでメニューを開く
+          openMenu();
+        } else if (gestureState.dx > 50 && isMenuOpen && !isMenuExpanded) {
+          // さらに右スワイプでメニューを展開
+          setIsMenuExpanded(true);
+        }
+      },
+      onPanResponderRelease: () => {
+        // スワイプ終了時の処理
+      },
+    })
+  ).current;
+
+  // カスタムヘッダー
+  const CustomHeader = ({ title }: { title: string }) => (
+    <View style={styles.headerContainer}>
+      <View style={styles.headerContent}>
+        <TouchableOpacity onPress={openMenu} style={styles.menuButton}>
+          <Ionicons name="menu" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        
+        <Text style={styles.headerTitle}>{title}</Text>
+      </View>
+    </View>
+  );
+
   return (
-    <View style={{ flexDirection: 'row', marginRight: 8 }}>
-      <TouchableOpacity
-        style={{
-          width: 50,
-          height: 50,
-          justifyContent: 'center',
-          alignItems: 'center',
+    <View style={styles.container} {...panResponder.panHandlers}>
+      {/* サイドメニュー */}
+      <SideMenu 
+        isOpen={isMenuOpen} 
+        onClose={closeMenu} 
+        isExpanded={isMenuExpanded}
+        onExpandChange={setIsMenuExpanded}
+      />
+      
+      {/* オーバーレイ（メニューが開いているときに表示） */}
+      {isMenuOpen && (
+        <TouchableWithoutFeedback onPress={closeMenu}>
+          <View style={styles.overlay} />
+        </TouchableWithoutFeedback>
+      )}
+      
+      {/* メインコンテンツ */}
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: 'default',
+          animationDuration: 300,
         }}
-        onPress={() => router.push('/settings')}
       >
-        <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
-      </TouchableOpacity>
+        <Stack.Screen 
+          name="index" 
+          options={{ 
+            headerShown: true,
+            header: () => <CustomHeader title="ホーム" />,
+          }} 
+        />
+        <Stack.Screen 
+          name="channels" 
+          options={{ 
+            headerShown: true,
+            header: () => <CustomHeader title="チャンネル一覧" />,
+          }} 
+        />
+        <Stack.Screen 
+          name="category" 
+          options={{ 
+            headerShown: true,
+            header: () => <CustomHeader title="チャンネル一覧" />,
+          }} 
+        />
+        <Stack.Screen 
+          name="settings" 
+          options={{ 
+            headerShown: true,
+            header: () => <CustomHeader title="設定" />,
+          }} 
+        />
+      </Stack>
     </View>
   );
 }
 
-export default function DrawerLayout() {
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <Drawer
-        screenOptions={{
-          headerShown: true,
-          headerLeft: () => <HamburgerButton />,
-          headerRight: () => <HeaderRight />,
-          headerStyle: {
-            backgroundColor: '#1E1E2E',
-            height: 100, // ヘッダーの高さをさらに大きく
-          },
-          headerTintColor: '#fff',
-          headerTitleStyle: {
-            fontWeight: 'bold',
-            fontSize: 22, // タイトルのフォントサイズをさらに大きく
-            marginLeft: 20, // タイトルの左マージンを追加
-          },
-          headerLeftContainerStyle: {
-            width: 80, // 左側コンテナの幅を広げる
-            paddingLeft: 10,
-          },
-          headerRightContainerStyle: {
-            width: 80, // 右側コンテナの幅を広げる
-            paddingRight: 10,
-          },
-          drawerStyle: {
-            backgroundColor: '#1E1E2E',
-            width: 280,
-          },
-          drawerActiveTintColor: '#7F3DFF',
-          drawerInactiveTintColor: '#CCCCCC',
-          swipeEdgeWidth: 200,
-          swipeEnabled: true,
-        }}
-        drawerContent={(props) => {
-          return (
-            <DrawerContentScrollView {...props}>
-              <DrawerItemList {...props} />
-              <Divider style={{ backgroundColor: '#2A2A2A', marginVertical: 8 }} />
-              <SettingsButton />
-            </DrawerContentScrollView>
-          );
-        }}
-      >
-        <Drawer.Screen
-          name="index"
-          options={{
-            drawerLabel: 'ホーム',
-            title: 'ホーム',
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="home-outline" size={size} color={color} />
-            ),
-          }}
-        />
-        <Drawer.Screen
-          name="category/index"
-          options={{
-            drawerLabel: '楽器カテゴリー',
-            title: '楽器カテゴリー',
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="musical-notes-outline" size={size} color={color} />
-            ),
-          }}
-        />
-        <Drawer.Screen
-          name="profile"
-          options={{
-            drawerLabel: 'プロフィール',
-            title: 'プロフィール',
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="person-outline" size={size} color={color} />
-            ),
-          }}
-        />
-      </Drawer>
-    </GestureHandlerRootView>
-  );
-} 
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000000',
+    opacity: 0.5,
+    zIndex: 5,
+  },
+  headerContainer: {
+    backgroundColor: '#1A1A1A',
+    paddingTop: 50,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A2A2A',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  menuButton: {
+    padding: 8,
+    marginRight: 16,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+}); 

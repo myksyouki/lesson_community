@@ -10,6 +10,7 @@ import { useData } from '../../contexts/DataContext';
 import MusicFAB from '../../components/MusicFAB';
 import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // 画面サイズを取得
 const { width } = Dimensions.get('window');
@@ -84,6 +85,31 @@ const INSTRUMENT_CATEGORIES = [
   { id: 'tuba', name: 'チューバ', icon: 'musical-notes', color: '#FF6B3D' },
   { id: 'percussion', name: 'パーカッション', icon: 'musical-notes', color: '#3DB0FF' },
 ];
+
+// ブレッドクラムナビゲーション
+function BreadcrumbNavigation({ channelName }: { channelName: string }) {
+  const router = useRouter();
+  
+  return (
+    <View style={styles.breadcrumbContainer}>
+      <TouchableOpacity 
+        style={styles.breadcrumbItem}
+        onPress={() => router.push('/')}
+      >
+        <Ionicons name="home" size={16} color="#FFFFFF" />
+        <Text style={styles.breadcrumbText}>ホーム</Text>
+      </TouchableOpacity>
+      
+      <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.6)" style={styles.breadcrumbSeparator} />
+      
+      <View style={styles.breadcrumbActiveItem}>
+        <View style={styles.breadcrumbActiveBackground}>
+          <Text style={styles.breadcrumbActiveText}>{channelName}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function ChannelScreen() {
   const router = useRouter();
@@ -236,40 +262,42 @@ export default function ChannelScreen() {
           <SafeAreaView style={styles.container}>
             <StatusBar style="light" />
             
+            {/* ヘッダー */}
             <View style={styles.header}>
-              <IconButton
-                icon="arrow-left"
-                size={24}
-                iconColor="#FFFFFF"
-                onPress={() => router.back()}
+              <TouchableOpacity 
                 style={styles.backButton}
-              />
+                onPress={() => router.back()}
+              >
+                <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
               
               <View style={styles.headerContent}>
-                <View style={[styles.channelIconContainer, { backgroundColor: currentInstrument?.color + '33' }]}>
+                <View style={[styles.channelIconContainer, { backgroundColor: currentInstrument?.color + '30' }]}>
                   <Ionicons 
                     name={'chatbubbles'} 
                     size={20} 
                     color={currentInstrument?.color || '#7F3DFF'} 
                   />
                 </View>
-                
-                <View>
-                  <Text style={styles.channelName}>{channel.name}</Text>
-                  <Text style={styles.categoryName}>{currentInstrument?.name}</Text>
-                </View>
+                <Text style={styles.channelName}>{channel.name}</Text>
               </View>
             </View>
+            
+            {/* ブレッドクラムナビゲーション */}
+            <BreadcrumbNavigation channelName={channel.name} />
 
-            <Searchbar
-              placeholder="スレッドを検索"
-              onChangeText={onChangeSearch}
-              value={searchQuery}
-              style={styles.searchBar}
-              iconColor="#7F3DFF"
-              onSubmitEditing={handleSearch}
-              loading={isLoading}
-            />
+            {/* 検索バー */}
+            <View style={styles.searchContainer}>
+              <Searchbar
+                placeholder="検索"
+                onChangeText={onChangeSearch}
+                value={searchQuery}
+                style={styles.searchBar}
+                iconColor="#7F3DFF"
+                inputStyle={{ color: '#FFFFFF', fontSize: 14 }}
+                placeholderTextColor="#888888"
+              />
+            </View>
 
             {isLoading ? (
               <View style={styles.loadingContainer}>
@@ -289,44 +317,41 @@ export default function ChannelScreen() {
                 }
                 renderItem={({ item }) => (
                   <TouchableOpacity
+                    style={styles.threadCardContainer}
                     onPress={() => router.push(`/threads/${channelId}/${item.id}`)}
                   >
-                    <Card style={styles.threadCard}>
-                      <Card.Content>
-                        <View style={styles.threadHeader}>
-                          <Text style={styles.threadTitle}>{item.title}</Text>
-                          {!item.isLiked && (
-                            <View style={[styles.unreadDot, { backgroundColor: currentInstrument?.color || '#7F3DFF' }]} />
-                          )}
+                    <View style={styles.threadCard}>
+                      <View style={styles.threadHeader}>
+                        <Text style={styles.threadTitle} numberOfLines={1}>{item.title}</Text>
+                        {!item.isLiked && (
+                          <View style={[styles.unreadDot, { backgroundColor: currentInstrument?.color || '#7F3DFF' }]} />
+                        )}
+                      </View>
+                      
+                      <Text style={styles.threadAuthor}>{typeof item.author === 'string' ? item.author : item.author.name}</Text>
+                      
+                      <View style={styles.threadFooter}>
+                        <View style={styles.threadStats}>
+                          <Ionicons name="chatbubble-outline" size={14} color="#AAAAAA" />
+                          <Text style={styles.statText}>{item.replies}件の返信</Text>
                         </View>
-                        
-                        <View style={styles.threadMeta}>
-                          <Text style={styles.threadAuthor}>{item.author.name}</Text>
-                          <Text style={styles.threadTime}>{new Date(item.createdAt).toLocaleDateString('ja-JP')}</Text>
-                        </View>
-                        
-                        <View style={styles.threadFooter}>
-                          <Text style={styles.replyCount}>
-                            <Ionicons name="chatbubble-outline" size={14} /> {item.replies}件の返信
-                          </Text>
-                          <Text style={styles.likeCount}>
-                            <Ionicons name="heart-outline" size={14} /> {item.likes}
-                          </Text>
-                        </View>
-                      </Card.Content>
-                    </Card>
+                        <Text style={styles.threadDate}>{typeof item.createdAt === 'string' && !item.createdAt.match(/^\d/) ? item.createdAt : new Date(item.createdAt).toLocaleDateString('ja-JP')}</Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
                 )}
               />
             )}
             
+            {/* 新規スレッド作成ボタン */}
             <FAB
               style={[styles.fab, { backgroundColor: currentInstrument?.color || '#7F3DFF' }]}
               icon="plus"
               onPress={handleCreateThread}
             />
             
-            <MusicFAB isChannelScreen={true} />
+            {/* 音楽FABメニュー */}
+            <MusicFAB />
           </SafeAreaView>
         </RNAnimated.View>
       </PanGestureHandler>
@@ -356,11 +381,11 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   backButton: {
-    margin: 0,
+    marginRight: 16,
   },
   headerContent: {
     flexDirection: 'row',
@@ -370,105 +395,137 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
   },
   channelName: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  categoryName: {
+  breadcrumbContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  breadcrumbItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  breadcrumbText: {
+    color: '#FFFFFF',
     fontSize: 14,
-    color: '#AAAAAA',
+    marginLeft: 4,
+  },
+  breadcrumbSeparator: {
+    marginHorizontal: 8,
+  },
+  breadcrumbActiveItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  breadcrumbActiveBackground: {
+    backgroundColor: '#7F3DFF',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  breadcrumbActiveText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
   searchBar: {
-    marginHorizontal: 16,
-    marginVertical: 8,
-    backgroundColor: '#1E1E1E',
+    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     elevation: 0,
+    height: 40,
   },
   loadingContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   threadList: {
     paddingHorizontal: 16,
-    paddingBottom: 80, // FABの分の余白
   },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 80,
-  },
-  emptyText: {
-    fontSize: 18,
-    color: '#FFFFFF',
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#AAAAAA',
-    marginTop: 8,
+  threadCardContainer: {
+    marginBottom: 10,
   },
   threadCard: {
-    marginBottom: 12,
     backgroundColor: '#1E1E1E',
-    borderRadius: 12,
-    elevation: 0,
+    borderRadius: 10,
+    padding: 16,
   },
   threadHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   threadTitle: {
+    flex: 1,
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    flex: 1,
   },
   unreadDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     marginLeft: 8,
-  },
-  threadMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
   },
   threadAuthor: {
     fontSize: 14,
     color: '#AAAAAA',
-  },
-  threadTime: {
-    fontSize: 14,
-    color: '#AAAAAA',
+    marginBottom: 8,
   },
   threadFooter: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  replyCount: {
-    fontSize: 14,
-    color: '#AAAAAA',
+  threadStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  likeCount: {
-    fontSize: 14,
+  statText: {
+    fontSize: 12,
     color: '#AAAAAA',
-    marginLeft: 8,
+    marginLeft: 4,
+  },
+  threadDate: {
+    fontSize: 12,
+    color: '#AAAAAA',
   },
   fab: {
     position: 'absolute',
     margin: 16,
     right: 0,
-    bottom: 0,
+    bottom: 80,
+    borderRadius: 28,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginTop: 16,
+  },
+  emptySubtext: {
+    color: '#AAAAAA',
+    fontSize: 14,
+    marginTop: 8,
   },
 }); 

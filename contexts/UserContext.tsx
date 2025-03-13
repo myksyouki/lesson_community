@@ -10,6 +10,8 @@ interface UserState {
   avatarUrl: string;
   fabEnabled: boolean;
   fabPosition: { bottom: number; right: number };
+  // ユーザーが作成したチャンネルのID配列
+  createdChannels: string[];
 }
 
 // コンテキストの型定義
@@ -22,6 +24,10 @@ interface UserContextType {
   updateProfile: (data: Partial<UserState>) => void;
   setFabEnabled: (enabled: boolean) => void;
   setFabPosition: (position: { bottom: number; right: number }) => void;
+  // チャンネル作成関連の機能
+  addCreatedChannel: (channelId: string) => boolean;
+  removeCreatedChannel: (channelId: string) => void;
+  canCreateChannel: () => boolean;
 }
 
 // デフォルト値
@@ -34,6 +40,7 @@ const defaultUserState: UserState = {
   avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',
   fabEnabled: true,
   fabPosition: { bottom: 20, right: 20 },
+  createdChannels: [],
 };
 
 // コンテキストの作成
@@ -110,6 +117,34 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }));
   };
 
+  // ユーザーが作成したチャンネルを追加（制限チェック付き）
+  const addCreatedChannel = (channelId: string): boolean => {
+    // 既に3つチャンネルを作成している場合は失敗
+    if (userState.createdChannels.length >= 3) {
+      return false;
+    }
+    
+    setUserState(prev => ({
+      ...prev,
+      createdChannels: [...prev.createdChannels, channelId],
+    }));
+    
+    return true;
+  };
+
+  // ユーザーが作成したチャンネルを削除
+  const removeCreatedChannel = (channelId: string) => {
+    setUserState(prev => ({
+      ...prev,
+      createdChannels: prev.createdChannels.filter(id => id !== channelId),
+    }));
+  };
+
+  // チャンネルをさらに作成できるかどうかをチェック
+  const canCreateChannel = (): boolean => {
+    return userState.createdChannels.length < 3;
+  };
+
   return (
     <UserContext.Provider
       value={{
@@ -121,6 +156,9 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateProfile,
         setFabEnabled,
         setFabPosition,
+        addCreatedChannel,
+        removeCreatedChannel,
+        canCreateChannel,
       }}
     >
       {children}
