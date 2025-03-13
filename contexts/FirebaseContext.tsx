@@ -1,174 +1,148 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { auth, db } from '../firebase/config';
-import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { User } from '../firebase/models';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth, db, storage } from '../firebase/config';
+import { userService } from '../firebase/services';
+import { User as AppUser } from '../firebase/models';
+import { useUser } from './UserContext';
 
-// Firebaseコンテキストの型定義
-interface FirebaseContextType {
+// Firebaseの状態の型定義
+interface FirebaseState {
   initialized: boolean;
-  isInitialized: boolean; // initializedと同じ値を持つエイリアス
-  user: User | null;
   loading: boolean;
-  error: string | null;
-  logout: () => Promise<void>;
-  updateUserLastLogin: (userId: string) => Promise<void>;
+  isLoggedIn: boolean;
+  user: AppUser | null;
+  error: Error | null;
 }
 
-// デフォルト値
-const defaultContext: FirebaseContextType = {
-  initialized: false,
-  isInitialized: false,
-  user: null,
-  loading: true,
-  error: null,
-  logout: async () => {},
-  updateUserLastLogin: async () => {}
-};
+// コンテキストの型定義
+interface FirebaseContextType {
+  initialized: boolean;
+  loading: boolean;
+  isLoggedIn: boolean;
+  user: AppUser | null;
+  error: Error | null;
+  isInitialized: boolean;
+}
 
 // コンテキストの作成
-const FirebaseContext = createContext<FirebaseContextType>(defaultContext);
+const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
 
-// コンテキストを使用するためのフック
-export const useFirebase = () => useContext(FirebaseContext);
-
-// プロバイダーコンポーネント
+// Firebaseプロバイダーコンポーネント
 export const FirebaseProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<FirebaseContextType>({
-    ...defaultContext,
-    logout: async () => {
-      try {
-        console.log('ログアウト処理を実行します');
-        await signOut(auth);
-        console.log('ログアウト成功');
-      } catch (error) {
-        console.error('ログアウトエラー:', error);
-      }
-    },
-    updateUserLastLogin: async (userId: string) => {
-      try {
-        const userRef = doc(db, 'users', userId);
-        await setDoc(userRef, { lastLogin: new Date() }, { merge: true });
-      } catch (error) {
-        console.error('最終ログイン更新エラー:', error);
-      }
-    }
+  const [state, setState] = useState<FirebaseState>({
+    initialized: false,
+    loading: true,
+    isLoggedIn: false,
+    user: null,
+    error: null,
   });
+  
+  const { setSelectedCategories } = useUser();
+  // 既にリスナーが設定されているかを追跡するためのref
+  const listenerSetRef = useRef(false);
 
+  // Firebase初期化とユーザー認証状態の監視
   useEffect(() => {
-    console.log('FirebaseProvider: 初期化処理を開始します');
+    // 既にリスナーが設定されている場合は何もしない
+    if (listenerSetRef.current) return;
     
-    // Firebaseの初期化状態を確認
-    const checkInitialization = async () => {
-      try {
-        console.log('Firebase認証状態の監視を設定します');
+    // リスナーが設定されたことをマーク
+    listenerSetRef.current = true;
+    
+    try {
+      // Firebaseの初期化状態を設定
+      console.log('[Firebase] 設定確認...');
+      setState(prev => ({ ...prev, initialized: true }));
+      
+      // 認証状態の変更を監視
+      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
+        console.log('[Firebase] 認証状態変更:', firebaseUser?.uid || 'ログアウト状態');
         
-        // 認証状態の監視を設定
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-          console.log('認証状態が変更されました:', firebaseUser ? `ユーザーID: ${firebaseUser.uid}` : '未ログイン');
-          
-          if (firebaseUser) {
-            try {
-              // 最終ログイン時間を更新
-              await state.updateUserLastLogin(firebaseUser.uid);
-              console.log('最終ログイン時間を更新しました');
-              
-              // Firestoreからユーザー情報を取得
-              const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-              
-              if (userDoc.exists()) {
-                // ユーザー情報が存在する場合
-                console.log('ユーザー情報が見つかりました');
-                setState(prev => ({
-                  ...prev,
-                  initialized: true,
-                  isInitialized: true,
-                  user: userDoc.data() as User,
-                  loading: false,
-                  error: null
-                }));
-              } else {
-                // ユーザー情報が存在しない場合（認証はされているがFirestoreにデータがない）
-                console.log('ユーザー情報が見つかりません。新規作成します');
-                const newUser = {
-                  id: firebaseUser.uid,
-                  name: firebaseUser.displayName || '',
-                  email: firebaseUser.email || '',
-                  createdAt: new Date(),
-                  lastLogin: new Date()
-                };
-                
-                // 新しいユーザーをFirestoreに保存
-                await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
-                console.log('新しいユーザー情報を保存しました');
-                
-                setState(prev => ({
-                  ...prev,
-                  initialized: true,
-                  isInitialized: true,
-                  user: newUser,
-                  loading: false,
-                  error: null
-                }));
-              }
-            } catch (error) {
-              // ユーザー情報取得エラー
-              console.error('ユーザー情報取得エラー:', error);
-              setState(prev => ({
-                ...prev,
-                initialized: true,
-                isInitialized: true,
-                user: null,
-                loading: false,
-                error: `ユーザー情報の取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`
-              }));
+        if (firebaseUser) {
+          try {
+            // Firestoreからユーザー情報を取得
+            const appUser = await userService.getUserProfile(firebaseUser.uid);
+            
+            // 楽器情報がある場合はUserContextに設定
+            if (appUser && appUser.instruments && appUser.instruments.length > 0) {
+              console.log('[Firebase] 楽器情報:', appUser.instruments);
+              setSelectedCategories(appUser.instruments);
             }
-          } else {
-            // 未ログイン状態
-            console.log('未ログイン状態です');
-            setState(prev => ({
-              ...prev,
+            
+            setState({
               initialized: true,
-              isInitialized: true,
-              user: null,
               loading: false,
-              error: null
-            }));
+              isLoggedIn: true,
+              user: appUser,
+              error: null,
+            });
+          } catch (error) {
+            console.error('[Firebase] ユーザー情報取得エラー:', error);
+            setState({
+              initialized: true,
+              loading: false,
+              isLoggedIn: true,
+              user: {
+                id: firebaseUser.uid,
+                name: firebaseUser.displayName || '',
+                email: firebaseUser.email || '',
+                avatar: firebaseUser.photoURL || undefined,
+                createdAt: new Date(),
+                lastLogin: new Date(),
+              },
+              error: null,
+            });
           }
-        });
-        
-        // クリーンアップ関数
-        return () => {
-          console.log('Firebase認証状態の監視を解除します');
-          unsubscribe();
-        };
-      } catch (error) {
-        // Firebase初期化エラー
-        console.error('Firebase初期化エラー:', error);
-        setState(prev => ({
-          ...prev,
-          initialized: false,
-          isInitialized: false,
-          user: null,
-          loading: false,
-          error: `Firebaseの初期化に失敗しました: ${error instanceof Error ? error.message : String(error)}`
-        }));
-      }
-    };
-    
-    checkInitialization();
-  }, []);
+        } else {
+          setState({
+            initialized: true,
+            loading: false,
+            isLoggedIn: false,
+            user: null,
+            error: null,
+          });
+        }
+      });
 
-  console.log('FirebaseProvider: 現在の状態', {
+      // クリーンアップ関数
+      return () => {
+        listenerSetRef.current = false;
+        unsubscribe();
+      };
+    } catch (error) {
+      console.error('[Firebase] 設定確認エラー:', error);
+      setState({
+        initialized: false,
+        loading: false,
+        isLoggedIn: false,
+        user: null,
+        error: error as Error,
+      });
+    }
+  }, []); // 依存配列を空にして初回マウント時のみ実行
+
+  // コンテキスト値
+  const contextValue: FirebaseContextType = {
     initialized: state.initialized,
-    isLoggedIn: !!state.user,
     loading: state.loading,
-    error: state.error
-  });
+    isLoggedIn: state.isLoggedIn,
+    user: state.user,
+    error: state.error,
+    isInitialized: state.initialized && !state.loading,
+  };
 
   return (
-    <FirebaseContext.Provider value={state}>
+    <FirebaseContext.Provider value={contextValue}>
       {children}
     </FirebaseContext.Provider>
   );
+};
+
+// カスタムフック
+export const useFirebase = (): FirebaseContextType => {
+  const context = useContext(FirebaseContext);
+  if (context === undefined) {
+    throw new Error('useFirebase must be used within a FirebaseProvider');
+  }
+  return context;
 }; 

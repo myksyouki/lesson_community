@@ -127,17 +127,36 @@ export default function InstrumentSelectorScreen({ isModal = false, onClose }: I
   };
 
   // 確定ボタンを押した時の処理
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     // 選択した楽器を使用
     if (selectedInstrument) {
-      // 選択した楽器をユーザープロファイルに設定
-      setSelectedCategories([selectedInstrument]);
-      
-      // モーダルの場合は閉じる、そうでなければホーム画面に遷移
-      if (isModal && onClose) {
-        onClose();
-      } else {
-        router.replace('/');
+      try {
+        // 選択した楽器をユーザープロファイルに設定
+        setSelectedCategories([selectedInstrument]);
+        
+        // Firebase認証が利用可能な場合、ユーザーの楽器情報をFirebaseに保存
+        const { auth } = require('../firebase/config');
+        const { userService } = require('../firebase/services');
+        
+        if (auth.currentUser) {
+          await userService.updateUserInstruments(auth.currentUser.uid, [selectedInstrument]);
+          console.log('楽器情報をFirebaseに保存しました:', selectedInstrument);
+        }
+        
+        // モーダルの場合は閉じる、そうでなければホーム画面に遷移
+        if (isModal && onClose) {
+          onClose();
+        } else {
+          router.replace('/');
+        }
+      } catch (error) {
+        console.error('楽器情報の保存に失敗しました:', error);
+        // エラーが発生してもホーム画面に遷移する
+        if (isModal && onClose) {
+          onClose();
+        } else {
+          router.replace('/');
+        }
       }
     }
   };
@@ -230,7 +249,7 @@ export default function InstrumentSelectorScreen({ isModal = false, onClose }: I
         
         // 前回のジェスチャーから十分な時間が経過していない場合はスキップ
         // これにより、ジェスチャーの頻度を制限し、スムーズな回転を実現
-        if (now - lastGestureTime < 150) { // 約6.7FPS - 感度をさらに下げるために値を大きくする
+        if (now - lastGestureTime < 200) { // 約5FPSに制限し、スクロール感度を下げる
           return;
         }
         
@@ -248,9 +267,9 @@ export default function InstrumentSelectorScreen({ isModal = false, onClose }: I
         const deltaAngle = currentAngle - startAngle;
         
         // 回転角度を更新（前回の角度に変化分を加算）
-        // 感度を下げるために回転量を調整（0.05倍）
+        // 感度を下げるために回転量を調整（0.03倍に変更）
         setRotationAngle(prevAngle => {
-          const newAngle = prevAngle + (deltaAngle * 0.05);
+          const newAngle = prevAngle + (deltaAngle * 0.03);
           
           // 速度を計算
           const timeDelta = now - lastTimeRef.current;

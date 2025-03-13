@@ -12,7 +12,10 @@ import {
   deleteDoc, 
   serverTimestamp, 
   Timestamp,
-  writeBatch
+  writeBatch,
+  onSnapshot,
+  setDoc,
+  runTransaction
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
@@ -95,10 +98,16 @@ export const userService = {
   // ユーザープロフィールを取得
   async getUserProfile(userId: string): Promise<User | null> {
     try {
-      const userDocs = await getDocs(query(collection(db, 'users'), where('id', '==', userId)));
+      // whereクエリではなく、ドキュメントIDを直接指定
+      const userDoc = await getDoc(doc(db, 'users', userId));
       
-      if (!userDocs.empty) {
-        return userDocs.docs[0].data() as User;
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as User;
+        // IDがない場合はドキュメントIDを使用
+        if (!userData.id) {
+          userData.id = userId;
+        }
+        return userData;
       }
       
       return null;
@@ -111,26 +120,57 @@ export const userService = {
   // ユーザープロフィールを更新
   async updateUserProfile(userId: string, profileData: Partial<User>): Promise<User> {
     try {
-      const userDocs = await getDocs(query(collection(db, 'users'), where('id', '==', userId)));
+      // whereクエリではなく、ドキュメントIDを直接指定
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
       
-      if (userDocs.empty) {
-        throw new Error('ユーザーが見つかりません');
+      if (!userDoc.exists()) {
+        console.log(`ユーザー ${userId} のドキュメントが存在しないため、新規作成します`);
+        // ユーザードキュメントが存在しない場合は新規作成
+        const userData = {
+          id: userId,
+          name: profileData.name || '',
+          email: profileData.email || '',
+          avatar: profileData.avatar || '',
+          createdAt: new Date(),
+          lastLogin: new Date(),
+          ...profileData
+        };
+        
+        await setDoc(userDocRef, userData);
+        return userData as User;
       }
       
-      const userDocRef = userDocs.docs[0].ref;
-      await updateDoc(userDocRef, { ...profileData });
+      // 既存ドキュメントの更新
+      await updateDoc(userDocRef, { 
+        ...profileData,
+        updatedAt: new Date() 
+      });
       
       // Firebaseの認証プロフィールも更新
       if (auth.currentUser && profileData.name) {
-        await updateProfile(auth.currentUser, {
-          displayName: profileData.name,
-          photoURL: profileData.avatar
-        });
+        try {
+          await updateProfile(auth.currentUser, {
+            displayName: profileData.name,
+            photoURL: profileData.avatar
+          });
+          console.log('Firebase認証プロフィールを更新しました');
+        } catch (profileError) {
+          console.error('Firebase認証プロフィール更新エラー:', profileError);
+          // プロフィール更新エラーは処理を継続する（Firestoreの更新は行う）
+        }
       }
       
       // 更新後のユーザー情報を取得して返す
       const updatedUserDoc = await getDoc(userDocRef);
-      return updatedUserDoc.data() as User;
+      const userData = updatedUserDoc.data() as User;
+      
+      // IDが不足している場合は追加
+      if (!userData.id) {
+        userData.id = userId;
+      }
+      
+      return userData;
     } catch (error) {
       console.error('プロフィール更新エラー:', error);
       throw error;
@@ -140,20 +180,97 @@ export const userService = {
   // ユーザーの楽器情報を更新
   async updateUserInstruments(userId: string, instruments: string[]): Promise<User> {
     try {
-      const userDocs = await getDocs(query(collection(db, 'users'), where('id', '==', userId)));
+      // whereクエリではなく、ドキュメントIDを直接指定
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
       
-      if (userDocs.empty) {
-        throw new Error('ユーザーが見つかりません');
+      if (!userDoc.exists()) {
+        console.log(`ユーザー ${userId} のドキュメントが存在しないため、新規作成します`);
+        // ユーザードキュメントが存在しない場合は新規作成
+        const userData = {
+          id: userId,
+          name: '',
+          email: '',
+          instruments,
+          createdAt: new Date(),
+          lastLogin: new Date()
+        };
+        
+        await setDoc(userDocRef, userData);
+        return userData as User;
       }
       
-      const userDocRef = userDocs.docs[0].ref;
-      await updateDoc(userDocRef, { instruments });
+      // 既存ドキュメントの更新
+      await updateDoc(userDocRef, { 
+        instruments,
+        updatedAt: new Date() 
+      });
       
       // 更新後のユーザー情報を取得して返す
       const updatedUserDoc = await getDoc(userDocRef);
-      return updatedUserDoc.data() as User;
+      const userData = updatedUserDoc.data() as User;
+      
+      // IDが不足している場合は追加
+      if (!userData.id) {
+        userData.id = userId;
+      }
+      
+      return userData;
     } catch (error) {
       console.error('楽器情報更新エラー:', error);
+      throw error;
+    }
+  },
+  
+  // ユーザー設定を取得
+  async getUserSettings(userId: string): Promise<{ darkMode?: boolean; notifications?: boolean; fabEnabled?: boolean; language?: string; fontSize?: string; } | null> {
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        return {
+          darkMode: userData.darkMode,
+          notifications: userData.notifications,
+          fabEnabled: userData.fabEnabled,
+          language: userData.language,
+          fontSize: userData.fontSize
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('ユーザー設定取得エラー:', error);
+      throw error;
+    }
+  },
+  
+  // ユーザー設定を更新
+  async updateUserSettings(userId: string, settings: { darkMode?: boolean; notifications?: boolean; fabEnabled?: boolean; language?: string; fontSize?: string; }): Promise<void> {
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        // ユーザードキュメントが存在しない場合は新規作成
+        await setDoc(userDocRef, {
+          id: userId,
+          createdAt: new Date(),
+          ...settings
+        });
+        return;
+      }
+      
+      // 既存ドキュメントを更新
+      await updateDoc(userDocRef, { 
+        ...settings,
+        updatedAt: new Date() 
+      });
+      
+      console.log('ユーザー設定を更新しました', settings);
+    } catch (error) {
+      console.error('ユーザー設定更新エラー:', error);
       throw error;
     }
   },
@@ -341,6 +458,90 @@ export const channelService = {
     } catch (error) {
       console.error('スレッド数更新エラー:', error);
       throw error;
+    }
+  },
+  
+  // チャンネル一覧をリアルタイムで監視
+  subscribeToChannels(callback: (channels: Channel[]) => void): () => void {
+    try {
+      const channelsQuery = query(
+        collection(db, 'channels'),
+        orderBy('name')
+      );
+      
+      // onSnapshotリスナーを設定
+      const unsubscribe = onSnapshot(channelsQuery, (snapshot) => {
+        const channels = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Channel));
+        
+        callback(channels);
+      }, (error) => {
+        console.error('チャンネル監視エラー:', error);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('チャンネル監視設定エラー:', error);
+      return () => {};
+    }
+  },
+  
+  // 特定のカテゴリーのチャンネルをリアルタイムで監視
+  subscribeToChannelsByInstrument(instrument: string, callback: (channels: Channel[]) => void): () => void {
+    try {
+      const channelsQuery = query(
+        collection(db, 'channels'),
+        where('instrument', '==', instrument),
+        orderBy('name')
+      );
+      
+      // onSnapshotリスナーを設定
+      const unsubscribe = onSnapshot(channelsQuery, (snapshot) => {
+        const channels = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Channel));
+        
+        callback(channels);
+      }, (error) => {
+        console.error(`${instrument}カテゴリーのチャンネル監視エラー:`, error);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('カテゴリー別チャンネル監視設定エラー:', error);
+      return () => {};
+    }
+  },
+  
+  // 特定のチャンネルをリアルタイムで監視
+  subscribeToChannel(channelId: string, callback: (channel: Channel | null) => void): () => void {
+    try {
+      const channelRef = doc(db, 'channels', channelId);
+      
+      // onSnapshotリスナーを設定
+      const unsubscribe = onSnapshot(channelRef, (doc) => {
+        if (doc.exists()) {
+          const channel = {
+            id: doc.id,
+            ...doc.data()
+          } as Channel;
+          
+          callback(channel);
+        } else {
+          callback(null);
+        }
+      }, (error) => {
+        console.error(`チャンネル(${channelId})監視エラー:`, error);
+        callback(null);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('チャンネル個別監視設定エラー:', error);
+      return () => {};
     }
   }
 };
@@ -540,7 +741,7 @@ export const threadService = {
   },
   
   // スレッドを作成
-  async createThread(thread: Omit<Thread, 'id' | 'createdAt' | 'lastActivity' | 'messageCount' | 'isPinned'>, initialMessage?: string): Promise<Thread> {
+  async createThread(thread: Omit<Thread, 'id' | 'createdAt' | 'lastActivity' | 'messageCount' | 'isPinned'>, initialMessage?: string | null): Promise<Thread> {
     try {
       const newThread: Omit<Thread, 'id'> = {
         ...thread,
@@ -555,8 +756,8 @@ export const threadService = {
       // チャンネルのスレッド数を更新
       await channelService.updateThreadCount(thread.channelId);
       
-      // 初期メッセージがある場合は追加
-      if (initialMessage) {
+      // 初期メッセージがある場合は追加（nullの場合は追加しない）
+      if (initialMessage && initialMessage !== null) {
         await messageService.addMessage({
           threadId: threadRef.id,
           content: initialMessage,
@@ -680,19 +881,270 @@ export const threadService = {
       console.error('スレッドピン留めエラー:', error);
       throw error;
     }
+  },
+  
+  // チャンネル内のスレッド一覧をリアルタイムで監視
+  subscribeToThreadsByChannel(
+    channelId: string, 
+    sortBy: string = 'lastActivity',
+    callback: (threads: Thread[]) => void
+  ): () => void {
+    try {
+      let threadsQuery;
+      
+      if (sortBy === 'lastActivity') {
+        threadsQuery = query(
+          collection(db, 'threads'),
+          where('channelId', '==', channelId),
+          orderBy('lastActivity', 'desc')
+        );
+      } else if (sortBy === 'createdAt') {
+        threadsQuery = query(
+          collection(db, 'threads'),
+          where('channelId', '==', channelId),
+          orderBy('createdAt', 'desc')
+        );
+      } else if (sortBy === 'messageCount') {
+        threadsQuery = query(
+          collection(db, 'threads'),
+          where('channelId', '==', channelId),
+          orderBy('messageCount', 'desc')
+        );
+      } else {
+        threadsQuery = query(
+          collection(db, 'threads'),
+          where('channelId', '==', channelId),
+          orderBy('lastActivity', 'desc')
+        );
+      }
+      
+      // onSnapshotリスナーを設定
+      const unsubscribe = onSnapshot(threadsQuery, (snapshot) => {
+        const threads = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: data.title,
+            channelId: data.channelId,
+            instrument: data.instrument,
+            authorId: data.authorId,
+            authorName: data.authorName,
+            authorAvatar: data.authorAvatar,
+            createdAt: (data.createdAt as Timestamp).toDate(),
+            lastActivity: (data.lastActivity as Timestamp).toDate(),
+            messageCount: data.messageCount,
+            isPinned: data.isPinned
+          } as Thread;
+        });
+        
+        callback(threads);
+      }, (error) => {
+        console.error(`チャンネル(${channelId})のスレッド監視エラー:`, error);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('スレッド監視設定エラー:', error);
+      return () => {};
+    }
+  },
+  
+  // HOTスレッド（いいね数が多い順）をリアルタイムで監視
+  subscribeToHotThreads(
+    instrument: string | null = null,
+    limitCount: number = 10,
+    callback: (threads: Thread[]) => void
+  ): () => void {
+    try {
+      let threadsQuery;
+      
+      if (instrument) {
+        threadsQuery = query(
+          collection(db, 'threads'),
+          where('instrument', '==', instrument),
+          orderBy('lastActivity', 'desc'),
+          limit(limitCount * 3) // 多めに取得してクライアント側でソート
+        );
+      } else {
+        threadsQuery = query(
+          collection(db, 'threads'),
+          orderBy('lastActivity', 'desc'),
+          limit(limitCount * 3) // 多めに取得してクライアント側でソート
+        );
+      }
+      
+      // onSnapshotリスナーを設定
+      const unsubscribe = onSnapshot(threadsQuery, (snapshot) => {
+        const threads = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: data.title,
+            channelId: data.channelId,
+            instrument: data.instrument,
+            authorId: data.authorId,
+            authorName: data.authorName,
+            authorAvatar: data.authorAvatar,
+            createdAt: (data.createdAt as Timestamp).toDate(),
+            lastActivity: (data.lastActivity as Timestamp).toDate(),
+            messageCount: data.messageCount,
+            isPinned: data.isPinned
+          } as Thread;
+        });
+        
+        // ここでは仮にlastActivity（最終活動時間）でソートしています
+        // 実際のアプリケーションでは「いいね」の数でソートする必要があります
+        const sortedThreads = [...threads].sort((a, b) => {
+          const timeA = a.lastActivity instanceof Date ? a.lastActivity.getTime() : 0;
+          const timeB = b.lastActivity instanceof Date ? b.lastActivity.getTime() : 0;
+          return timeB - timeA;
+        }).slice(0, limitCount);
+        
+        callback(sortedThreads);
+      }, (error) => {
+        console.error('HOTスレッド監視エラー:', error);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('HOTスレッド監視設定エラー:', error);
+      return () => {};
+    }
+  },
+  
+  // 特定のスレッドをリアルタイムで監視
+  subscribeToThread(threadId: string, callback: (thread: Thread | null) => void): () => void {
+    try {
+      const threadRef = doc(db, 'threads', threadId);
+      
+      // onSnapshotリスナーを設定
+      const unsubscribe = onSnapshot(threadRef, (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          const thread = {
+            id: doc.id,
+            title: data.title,
+            channelId: data.channelId,
+            instrument: data.instrument,
+            authorId: data.authorId,
+            authorName: data.authorName,
+            authorAvatar: data.authorAvatar,
+            createdAt: (data.createdAt as Timestamp).toDate(),
+            lastActivity: (data.lastActivity as Timestamp).toDate(),
+            messageCount: data.messageCount,
+            isPinned: data.isPinned
+          } as Thread;
+          
+          callback(thread);
+        } else {
+          callback(null);
+        }
+      }, (error) => {
+        console.error(`スレッド(${threadId})監視エラー:`, error);
+        callback(null);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('スレッド個別監視設定エラー:', error);
+      return () => {};
+    }
+  },
+  
+  // スレッドのいいねをトグル
+  async toggleLikeThread(threadId: string, userId: string): Promise<{ isLiked: boolean; likeCount: number }> {
+    try {
+      // トランザクションを使用してデータの整合性を保つ
+      const threadRef = doc(db, 'threads', threadId);
+      
+      // 「likes」コレクションでスレッドのいいねを管理
+      const likeRef = doc(db, 'likes', `${threadId}_${userId}`);
+      const likeDoc = await getDoc(likeRef);
+      
+      // いいねの存在をチェック
+      const isLiked = likeDoc.exists();
+      
+      // いいねを追加または削除
+      if (isLiked) {
+        // いいねを削除
+        await deleteDoc(likeRef);
+      } else {
+        // いいねを追加
+        await setDoc(likeRef, {
+          threadId,
+          userId,
+          createdAt: new Date()
+        });
+      }
+      
+      // いいね数を再計算
+      const likesQuery = query(
+        collection(db, 'likes'),
+        where('threadId', '==', threadId)
+      );
+      
+      const likesSnapshot = await getDocs(likesQuery);
+      const likeCount = likesSnapshot.size;
+      
+      // スレッドのlikeCount値を更新
+      await updateDoc(threadRef, {
+        likeCount: likeCount
+      });
+      
+      return {
+        isLiked: !isLiked,
+        likeCount
+      };
+    } catch (error) {
+      console.error('いいねトグルエラー:', error);
+      throw error;
+    }
+  },
+  
+  // ユーザーがスレッドにいいねしているかチェック
+  async isThreadLikedByUser(threadId: string, userId: string): Promise<boolean> {
+    try {
+      const likeRef = doc(db, 'likes', `${threadId}_${userId}`);
+      const likeDoc = await getDoc(likeRef);
+      return likeDoc.exists();
+    } catch (error) {
+      console.error('いいねチェックエラー:', error);
+      return false;
+    }
+  },
+  
+  // スレッドのいいね数を取得
+  async getThreadLikeCount(threadId: string): Promise<number> {
+    try {
+      const likesQuery = query(
+        collection(db, 'likes'),
+        where('threadId', '==', threadId)
+      );
+      
+      const likesSnapshot = await getDocs(likesQuery);
+      return likesSnapshot.size;
+    } catch (error) {
+      console.error('いいね数取得エラー:', error);
+      return 0;
+    }
   }
 };
 
 // メッセージ関連のサービス
 export const messageService = {
   // スレッド内のメッセージ一覧を取得
-  async getMessagesByThread(threadId: string): Promise<Message[]> {
+  async getMessagesByThread(threadId: string, messageLimit?: number): Promise<Message[]> {
     try {
-      const messagesQuery = query(
+      let messagesQuery = query(
         collection(db, 'messages'),
         where('threadId', '==', threadId),
         orderBy('timestamp', 'asc')
       );
+      
+      // メッセージ数を制限する場合
+      if (messageLimit) {
+        messagesQuery = query(messagesQuery, limit(messageLimit));
+      }
       
       const messageDocs = await getDocs(messagesQuery);
       return messageDocs.docs.map(doc => {
@@ -897,52 +1349,244 @@ export const messageService = {
     }
   },
   
-  // リアクションを追加/削除
+  // メッセージへのリアクションを切り替える
   async toggleReaction(messageId: string, emoji: string, userId: string): Promise<void> {
     try {
       const messageRef = doc(db, 'messages', messageId);
       const messageDoc = await getDoc(messageRef);
       
-      if (messageDoc.exists()) {
-        const message = messageDoc.data();
-        const reactions = message.reactions || [];
+      if (!messageDoc.exists()) {
+        throw new Error('メッセージが見つかりません');
+      }
+      
+      // トランザクションでリアクションの更新を行う
+      await runTransaction(db, async (transaction) => {
+        const updatedDoc = await transaction.get(messageRef);
+        const messageData = updatedDoc.data();
+        
+        let reactions = messageData.reactions || [];
         
         // 既存のリアクションを探す
-        const existingReactionIndex = reactions.findIndex((r: Reaction) => r.emoji === emoji);
+        const existingReactionIndex = reactions.findIndex(
+          (r: { emoji: string; users: string[] }) => 
+          r.emoji === emoji && r.users.includes(userId)
+        );
         
         if (existingReactionIndex >= 0) {
-          const reaction = reactions[existingReactionIndex];
-          const userIndex = reaction.users.indexOf(userId);
+          // リアクションが既にある場合は削除
+          const updatedUsers = reactions[existingReactionIndex].users.filter(
+            (id: string) => id !== userId
+          );
           
-          if (userIndex >= 0) {
-            // ユーザーが既にリアクションしている場合は削除
-            reaction.users.splice(userIndex, 1);
-            reaction.count--;
-            
-            // リアクションのユーザーがいなくなった場合はリアクション自体を削除
-            if (reaction.count === 0) {
-              reactions.splice(existingReactionIndex, 1);
-            }
+          if (updatedUsers.length === 0) {
+            // ユーザーがいなくなった場合は、そのリアクションを削除
+            reactions = reactions.filter((_, index) => index !== existingReactionIndex);
           } else {
-            // ユーザーがまだリアクションしていない場合は追加
-            reaction.users.push(userId);
-            reaction.count++;
+            // ユーザーリストを更新
+            reactions[existingReactionIndex].users = updatedUsers;
+            reactions[existingReactionIndex].count = updatedUsers.length;
           }
         } else {
           // 新しいリアクションを追加
-          reactions.push({
-            emoji,
-            count: 1,
-            users: [userId]
-          });
+          const existingEmojiIndex = reactions.findIndex(
+            (r: { emoji: string }) => r.emoji === emoji
+          );
+          
+          if (existingEmojiIndex >= 0) {
+            // 同じ絵文字のリアクションがある場合はユーザーを追加
+            reactions[existingEmojiIndex].users.push(userId);
+            reactions[existingEmojiIndex].count = reactions[existingEmojiIndex].users.length;
+          } else {
+            // 新しい絵文字のリアクションを追加
+            reactions.push({
+              emoji,
+              count: 1,
+              users: [userId]
+            });
+          }
         }
         
-        // メッセージを更新
-        await updateDoc(messageRef, { reactions });
-      }
+        // トランザクションでデータを更新
+        transaction.update(messageRef, { reactions });
+      });
+      
+      console.log(`メッセージ ${messageId} のリアクションを更新しました`);
     } catch (error) {
       console.error('リアクション更新エラー:', error);
       throw error;
+    }
+  },
+  
+  // いいねリアクションをトグルする（簡易版）
+  async toggleLikeMessage(messageId: string, userId: string): Promise<{ isLiked: boolean, likeCount: number }> {
+    try {
+      const messageRef = doc(db, 'messages', messageId);
+      const messageDoc = await getDoc(messageRef);
+      
+      if (!messageDoc.exists()) {
+        throw new Error('メッセージが見つかりません');
+      }
+      
+      let result = { isLiked: false, likeCount: 0 };
+      
+      // トランザクションでいいねの更新を行う
+      await runTransaction(db, async (transaction) => {
+        const updatedDoc = await transaction.get(messageRef);
+        const messageData = updatedDoc.data();
+        
+        let reactions = messageData.reactions || [];
+        const heartEmoji = '❤️'; // ハートの絵文字を使用
+        
+        // 既存のいいねを探す
+        const existingLikeIndex = reactions.findIndex(
+          (r: { emoji: string; users: string[] }) => 
+          r.emoji === heartEmoji && r.users.includes(userId)
+        );
+        
+        if (existingLikeIndex >= 0) {
+          // いいねが既にある場合は削除
+          const updatedUsers = reactions[existingLikeIndex].users.filter(
+            (id: string) => id !== userId
+          );
+          
+          if (updatedUsers.length === 0) {
+            // ユーザーがいなくなった場合は、そのリアクションを削除
+            reactions = reactions.filter((_, index) => index !== existingLikeIndex);
+          } else {
+            // ユーザーリストを更新
+            reactions[existingLikeIndex].users = updatedUsers;
+            reactions[existingLikeIndex].count = updatedUsers.length;
+          }
+          
+          result.isLiked = false;
+        } else {
+          // 新しいいいねを追加
+          const existingHeartIndex = reactions.findIndex(
+            (r: { emoji: string }) => r.emoji === heartEmoji
+          );
+          
+          if (existingHeartIndex >= 0) {
+            // 同じハートのリアクションがある場合はユーザーを追加
+            reactions[existingHeartIndex].users.push(userId);
+            reactions[existingHeartIndex].count = reactions[existingHeartIndex].users.length;
+          } else {
+            // 新しいハートのリアクションを追加
+            reactions.push({
+              emoji: heartEmoji,
+              count: 1,
+              users: [userId]
+            });
+          }
+          
+          result.isLiked = true;
+        }
+        
+        // いいねの合計数を計算
+        const likeReaction = reactions.find((r: { emoji: string }) => r.emoji === heartEmoji);
+        result.likeCount = likeReaction ? likeReaction.count : 0;
+        
+        // トランザクションでデータを更新
+        transaction.update(messageRef, { reactions });
+      });
+      
+      console.log(`メッセージ ${messageId} のいいねを更新しました: `, result);
+      return result;
+    } catch (error) {
+      console.error('いいね更新エラー:', error);
+      throw error;
+    }
+  },
+  
+  // メッセージがユーザーにいいねされているか確認
+  async isMessageLikedByUser(messageId: string, userId: string): Promise<boolean> {
+    try {
+      const messageDoc = await getDoc(doc(db, 'messages', messageId));
+      
+      if (!messageDoc.exists()) {
+        return false;
+      }
+      
+      const messageData = messageDoc.data();
+      const reactions = messageData.reactions || [];
+      const heartEmoji = '❤️';
+      
+      // ハートのリアクションを探す
+      const heartReaction = reactions.find(
+        (r: { emoji: string }) => r.emoji === heartEmoji
+      );
+      
+      if (!heartReaction) {
+        return false;
+      }
+      
+      // ユーザーがいいねしているか確認
+      return heartReaction.users.includes(userId);
+    } catch (error) {
+      console.error('いいね状態確認エラー:', error);
+      return false;
+    }
+  },
+  
+  // メッセージのいいね数を取得
+  async getMessageLikeCount(messageId: string): Promise<number> {
+    try {
+      const messageDoc = await getDoc(doc(db, 'messages', messageId));
+      
+      if (!messageDoc.exists()) {
+        return 0;
+      }
+      
+      const messageData = messageDoc.data();
+      const reactions = messageData.reactions || [];
+      const heartEmoji = '❤️';
+      
+      // ハートのリアクションを探す
+      const heartReaction = reactions.find(
+        (r: { emoji: string }) => r.emoji === heartEmoji
+      );
+      
+      return heartReaction ? heartReaction.count : 0;
+    } catch (error) {
+      console.error('いいね数取得エラー:', error);
+      return 0;
+    }
+  },
+  
+  // スレッド内のメッセージ一覧をリアルタイムで監視
+  subscribeToMessagesByThread(threadId: string, callback: (messages: Message[]) => void): () => void {
+    try {
+      const messagesQuery = query(
+        collection(db, 'messages'),
+        where('threadId', '==', threadId),
+        orderBy('timestamp', 'asc')
+      );
+      
+      // onSnapshotリスナーを設定
+      const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+        const messages = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            threadId: data.threadId,
+            content: data.content,
+            userId: data.userId,
+            userName: data.userName,
+            userAvatar: data.userAvatar,
+            timestamp: (data.timestamp as Timestamp).toDate(),
+            attachments: data.attachments || [],
+            reactions: data.reactions || []
+          } as Message;
+        });
+        
+        callback(messages);
+      }, (error) => {
+        console.error(`スレッド(${threadId})のメッセージ監視エラー:`, error);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('メッセージ監視設定エラー:', error);
+      return () => {};
     }
   }
 };

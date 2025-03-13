@@ -1,6 +1,103 @@
-# Welcome to your Expo app 👋
+# 音楽コミュニティアプリ
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+楽器演奏者のためのコミュニティプラットフォームアプリケーション。
+楽器ごとのチャンネルが用意されており、演奏テクニックや機材についての情報交換、初心者の質問など多様な交流が可能です。
+
+## 機能
+
+- 楽器ごとのチャンネル
+- スレッド形式のディスカッション
+- HOTスレッドの表示
+- プロフィール管理
+- 画像/音声メッセージのサポート
+- GoogleアカウントでのログインとEメール/パスワード認証
+
+## 技術スタック
+
+- [Expo](https://expo.dev/)
+- [React Native](https://reactnative.dev/)
+- [TypeScript](https://www.typescriptlang.org/)
+- [Firebase](https://firebase.google.com/)
+  - Authentication（認証）
+  - Firestore（データベース）
+  - Storage（ファイルストレージ）
+
+## セットアップ
+
+### 前提条件
+
+- Node.js (16.x 以上)
+- npm または yarn
+- Expo CLI (`npm install -g expo-cli`)
+- Firebase プロジェクト
+
+### 初期設定
+
+1. リポジトリをクローン
+```bash
+git clone <リポジトリURL>
+cd music_community
+```
+
+2. 依存パッケージのインストール
+```bash
+npm install
+# または
+yarn install
+```
+
+3. Firebase設定
+
+Firebase コンソールから新しいプロジェクトを作成し、Webアプリケーションとして登録します。
+発行された設定情報を `.env` ファイルに記入します。
+
+```dotenv
+EXPO_PUBLIC_FIREBASE_API_KEY=XXXXXXXXXXXX
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=XXXXXXXXXXXX
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=XXXXXXXXXXXX
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=XXXXXXXXXXXX
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=XXXXXXXXXXXX
+EXPO_PUBLIC_FIREBASE_APP_ID=XXXXXXXXXXXX
+```
+
+4. Google認証設定 (オプション)
+
+Google認証を使用する場合は、Firebase コンソールで Google 認証プロバイダーを有効にし、
+OAuthクライアントIDを取得して `.env` ファイルに追加します。
+
+```dotenv
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=XXXXXXXXXXXX
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=XXXXXXXXXXXX
+EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=XXXXXXXXXXXX
+```
+
+### 開発サーバーの起動
+
+```bash
+npx expo start -c
+```
+
+## ディレクトリ構成
+
+- `/app`: メインアプリケーションコード (Expo Router ファイルベースのルーティング)
+- `/components`: 再利用可能なUIコンポーネント
+- `/contexts`: Reactコンテキスト（Firebase、User、Data）
+- `/firebase`: Firebase設定とサービス
+- `/hooks`: カスタムReactフック
+- `/constants`: 定数と設定
+- `/utils`: ユーティリティ関数
+- `/assets`: 画像やフォントなどの静的アセット
+
+## バックエンド機能
+
+アプリケーションは以下のバックエンド機能を提供しています：
+
+1. **認証管理**: メール/パスワード認証、Google認証
+2. **ユーザープロファイル管理**: プロフィール情報の保存と更新
+3. **チャンネル管理**: チャンネルの作成、一覧取得、更新、削除
+4. **スレッド管理**: スレッドの作成、一覧取得、更新、削除
+5. **メッセージ管理**: メッセージの送信、取得、削除、添付ファイル対応
+6. **リアルタイムデータ同期**: Firestoreのリアルタイムリスナーによるデータ同期
 
 ## Get started
 

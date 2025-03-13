@@ -98,14 +98,24 @@ export default function ProfileScreen() {
               <Text style={styles.statLabel}>投稿</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>1.2k</Text>
-              <Text style={styles.statLabel}>フォロワー</Text>
+              <Text style={styles.statValue}>24</Text>
+              <Text style={styles.statLabel}>チャンネル</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>384</Text>
-              <Text style={styles.statLabel}>フォロー中</Text>
+              <Text style={styles.statValue}>2.1k</Text>
+              <Text style={styles.statLabel}>いいね</Text>
             </View>
           </View>
+          
+          {/* HOMEに戻るボタン */}
+          <Button 
+            mode="contained" 
+            style={styles.homeButton}
+            icon="home"
+            onPress={() => router.replace('/(drawer)')}
+          >
+            HOMEに戻る
+          </Button>
 
           <View style={styles.buttonContainer}>
             <Button 
@@ -693,5 +703,11 @@ const styles = StyleSheet.create({
   createChannelButton: {
     marginTop: 12,
     backgroundColor: '#7F3DFF',
+  },
+  homeButton: {
+    marginHorizontal: 16,
+    marginVertical: 24,
+    backgroundColor: '#7F3DFF',
+    borderRadius: 8,
   },
 });

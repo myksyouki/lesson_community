@@ -17,8 +17,15 @@ const firebaseConfig = {
 // Firebaseアプリの初期化（既に初期化されている場合は既存のアプリを取得）
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Firebase認証の取得（一時的にAsyncStorageを使わない方法に戻す）
+// Firebase認証の取得
+// 注: AsyncStorageでの永続化は必要に応じて後で実装
 const auth = getAuth(app);
+
+// TODO: AsyncStorage永続化を実装する場合は以下のようにする
+// import { getReactNativePersistence } from '@firebase/auth/react-native'; 
+// const auth = initializeAuth(app, {
+//   persistence: getReactNativePersistence(AsyncStorage)
+// });
 
 // Firestoreデータベースの取得
 const db = getFirestore(app);

@@ -232,7 +232,7 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const theme = useTheme();
   const { userState } = useUser();
-  const { channels, getChannelsByCategory } = useData();
+  const { channels, getChannelsByCategory, subscribeToHotThreads: dataSubscribeToHotThreads } = useData();
   const { selectedCategories } = userState;
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -257,17 +257,34 @@ export default function HomeScreen() {
     .sort((a, b) => b.members - a.members)
     .slice(0, 3);
   
-  // HOTスレッドを取得（いいね数が多い順に5つ）
-  const hotThreads = categoryChannels
-    .flatMap(channel => 
-      channel.threads.map(thread => ({
-        ...thread,
-        channelId: channel.id,
-        channelName: channel.name
-      }))
-    )
-    .sort((a, b) => b.likes - a.likes)
-    .slice(0, 5);
+  // HOTスレッドを取得する部分を更新
+  const [hotThreads, setHotThreads] = useState<any[]>([]);
+
+  // リアルタイムリスナーを使用してHOTスレッドを取得
+  useEffect(() => {
+    if (!currentInstrument) return;
+    
+    const unsubscribe = subscribeToHotThreads(currentInstrument.id, 5);
+    return () => {
+      unsubscribe();
+    };
+  }, [currentInstrument]);
+
+  // HOTスレッドを購読する関数
+  const subscribeToHotThreads = (instrument: string, limit: number) => {
+    return dataSubscribeToHotThreads(instrument, limit, (threads) => {
+      // チャンネル名を付加
+      const threadsWithChannelName = threads.map(thread => {
+        const channel = categoryChannels.find(c => c.id === thread.channelId);
+        return {
+          ...thread,
+          channelName: channel?.name || '不明なチャンネル'
+        };
+      });
+      
+      setHotThreads(threadsWithChannelName);
+    });
+  };
   
   // 検索フィルター
   const filteredChannels = searchQuery.trim() 

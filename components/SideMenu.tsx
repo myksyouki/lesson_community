@@ -284,6 +284,11 @@ export default function SideMenu({ isOpen, onClose, isExpanded: propIsExpanded, 
         <Ionicons name="search" size={24} color="#FFFFFF" />
       </TouchableOpacity>
       
+      {/* プロフィールアイコン */}
+      <TouchableOpacity style={styles.miniMenuItem} onPress={goToProfile}>
+        <Ionicons name="person" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
+      
       {/* 設定 / プロフィール */}
       <TouchableOpacity style={styles.miniMenuItem} onPress={goToSettings}>
         <Ionicons name="settings" size={24} color="#FFFFFF" />

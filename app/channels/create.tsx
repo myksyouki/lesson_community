@@ -31,21 +31,11 @@ export default function CreateChannelScreen() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(userState.selectedCategories[0] || 'flute');
-  const [menuVisible, setMenuVisible] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // 選択されているカテゴリー情報
   const currentInstrument = INSTRUMENT_CATEGORIES.find(cat => cat.id === selectedCategory);
-  
-  // メニューの表示/非表示
-  const toggleMenu = () => setMenuVisible(!menuVisible);
-  
-  // カテゴリー選択
-  const selectCategory = (categoryId: string) => {
-    setSelectedCategory(categoryId);
-    setMenuVisible(false);
-  };
   
   // チャンネル作成処理
   const handleCreateChannel = async () => {
@@ -81,8 +71,8 @@ export default function CreateChannelScreen() {
       // ユーザーの作成したチャンネル一覧に追加
       addCreatedChannel(channelId);
       
-      // 作成したチャンネルに移動
-      router.push(`/channels/${channelId}`);
+      // 作成したチャンネルに移動（replace を使って履歴スタックを置き換え）
+      router.replace(`/channels/${channelId}`);
     } catch (error) {
       console.error('チャンネル作成エラー:', error);
       setError('チャンネルの作成に失敗しました。もう一度お試しください。');
@@ -160,55 +150,6 @@ export default function CreateChannelScreen() {
             theme={{ colors: { text: '#FFFFFF', background: '#1E1E1E' } }}
           />
           
-          <Text style={styles.label}>カテゴリー <Text style={styles.required}>*</Text></Text>
-          <Menu
-            visible={menuVisible}
-            onDismiss={toggleMenu}
-            anchor={
-              <TouchableOpacity
-                style={[
-                  styles.categorySelector,
-                  { borderColor: currentInstrument?.color || '#7F3DFF' }
-                ]}
-                onPress={toggleMenu}
-              >
-                <View style={styles.selectedCategory}>
-                  <View 
-                    style={[
-                      styles.categoryIcon, 
-                      { backgroundColor: currentInstrument?.color + '30' || '#7F3DFF30' }
-                    ]}
-                  >
-                    <Ionicons 
-                      name="musical-notes" 
-                      size={18} 
-                      color={currentInstrument?.color || '#7F3DFF'} 
-                    />
-                  </View>
-                  <Text style={styles.categoryText}>{currentInstrument?.name || 'フルート'}</Text>
-                </View>
-                <Ionicons name="chevron-down" size={18} color="#FFFFFF" />
-              </TouchableOpacity>
-            }
-            contentStyle={styles.menuContent}
-          >
-            {INSTRUMENT_CATEGORIES.map(category => (
-              <Menu.Item
-                key={category.id}
-                onPress={() => selectCategory(category.id)}
-                title={category.name}
-                titleStyle={{ color: category.id === selectedCategory ? category.color : '#FFFFFF' }}
-                leadingIcon={() => (
-                  <Ionicons
-                    name="musical-notes"
-                    size={18}
-                    color={category.color}
-                  />
-                )}
-              />
-            ))}
-          </Menu>
-          
           <View style={styles.noteContainer}>
             <Text style={styles.noteTitle}>注意：</Text>
             <Text style={styles.noteText}>• 1ユーザーにつき作成できるチャンネルは3つまでです</Text>
@@ -270,35 +211,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E1E1E',
     marginBottom: 8,
     height: 120,
-  },
-  categorySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#1E1E1E',
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  selectedCategory: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  categoryIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  categoryText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  menuContent: {
-    backgroundColor: '#1E1E1E',
   },
   errorContainer: {
     backgroundColor: 'rgba(255, 87, 87, 0.2)',

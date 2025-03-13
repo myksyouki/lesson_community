@@ -1,4 +1,14 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+import { 
+  userService, 
+  channelService, 
+  threadService, 
+  messageService 
+} from '../firebase/services';
+import { getAuth } from 'firebase/auth';
+import { Channel as FirebaseChannel, Thread as FirebaseThread, Message as FirebaseMessage } from '../firebase/models';
+import { useFirebase } from './FirebaseContext';
+import { useUser } from './UserContext';
 
 // データモデルの型定義
 export interface Thread {
@@ -14,6 +24,25 @@ export interface Thread {
   likes: number;
   replies: number;
   isLiked: boolean;
+  channelId?: string;
+  messages: Message[];
+}
+
+export interface Message {
+  id: string;
+  author: {
+    id: string;
+    name: string;
+    avatar: string;
+  };
+  content: string;
+  createdAt: string;
+  image?: string;
+  replies?: number;
+  likes?: number;
+  isLiked?: boolean;
+  replyToId?: string;
+  replyToAuthor?: string;
 }
 
 export interface Channel {
@@ -28,14 +57,20 @@ export interface Channel {
 // コンテキストの型定義
 interface DataContextType {
   channels: Channel[];
+  isLoading: boolean;
+  error: string | null;
+  refreshData: () => Promise<void>;
   getChannelsByCategory: (category: string) => Channel[];
   getChannel: (channelId: string) => Channel | undefined;
   getThread: (channelId: string, threadId: string) => Thread | undefined;
   toggleLike: (channelId: string, threadId: string) => void;
-  createThread: (channelId: string, threadData: { title: string; content: string; author: { id: string; name: string; avatar: string; } }) => Promise<void>;
+  createThread: (channelId: string, threadData: { title: string; content: string; author: { id: string; name: string; avatar: string; } }) => Promise<string>;
   createChannel: (channelData: { name: string; description: string; category: string; creatorId: string }) => Promise<string>;
   deleteChannel: (channelId: string) => Promise<boolean>;
   getUserCreatedChannels: (userId: string) => Channel[];
+  subscribeToChannelUpdates: (channelId: string, callback: (channel: Channel | null) => void) => () => void;
+  subscribeToThreadsInChannel: (channelId: string, callback: (threads: Thread[]) => void) => () => void;
+  subscribeToHotThreads: (category: string | null, limit: number, callback: (threads: Thread[]) => void) => () => void;
 }
 
 // フルート用の追加サンプルスレッド
@@ -838,144 +873,466 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 // コンテキストプロバイダーコンポーネント
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [channels, setChannels] = useState<Channel[]>(sampleChannels);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const { isInitialized } = useFirebase();
+  const { userState } = useUser();
 
-  // カテゴリー別のチャンネル取得
+  // Firebaseから初期データを読み込む
+  useEffect(() => {
+    if (isInitialized) {
+      // チャンネル一覧のリアルタイム監視を設定
+      const unsubscribe = channelService.subscribeToChannels((fbChannels) => {
+        // チャンネルデータを変換し、状態を更新
+        processChannels(fbChannels);
+      });
+      
+      // クリーンアップ関数
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, [isInitialized]);
+
+  // チャンネルデータを処理する関数
+  const processChannels = async (firebaseChannels: FirebaseChannel[]) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // チャンネルデータを変換
+      const channelsWithThreads = await Promise.all(
+        firebaseChannels.map(async (fbChannel) => {
+          // チャンネルのスレッドを取得
+          const fbThreads = await threadService.getThreadsByChannel(fbChannel.id);
+          
+          // ユーザーID（ログイン中の場合）
+          const auth = getAuth();
+          const currentUserId = auth.currentUser?.uid;
+          
+          // スレッドデータを変換
+          const threads = await Promise.all(fbThreads.map(async (fbThread) => {
+            // いいねの状態を取得
+            let isLiked = false;
+            if (currentUserId) {
+              isLiked = await threadService.isThreadLikedByUser(fbThread.id, currentUserId);
+            }
+            
+            // いいね数を取得（likeCountがなければクエリで取得）
+            const likeCount = fbThread.likeCount !== undefined 
+              ? fbThread.likeCount 
+              : await threadService.getThreadLikeCount(fbThread.id);
+              
+            // スレッドの内容を取得（contentがあればそれを使用、なければ最初のメッセージから）
+            let content = fbThread.content || '';
+            if (!content) {
+              try {
+                const messages = await messageService.getMessagesByThread(fbThread.id, 1);
+                if (messages.length > 0) {
+                  content = messages[0].content;
+                }
+              } catch (error) {
+                console.error(`スレッド ${fbThread.id} の内容取得エラー:`, error);
+              }
+            }
+            
+            return {
+              id: fbThread.id,
+              title: fbThread.title,
+              content: content,
+              author: {
+                id: fbThread.authorId,
+                name: fbThread.authorName,
+                avatar: fbThread.authorAvatar || '',
+              },
+              createdAt: fbThread.createdAt.toISOString(),
+              likes: likeCount,
+              replies: fbThread.messageCount,
+              isLiked: isLiked,
+              channelId: fbChannel.id,
+              messages: [], // 初期状態では空の配列
+            } as Thread;
+          }));
+          
+          return {
+            id: fbChannel.id,
+            name: fbChannel.name,
+            description: fbChannel.description,
+            category: fbChannel.instrument, // Firestoreモデルではinstrumentフィールド
+            members: fbChannel.memberCount,
+            threads,
+          } as Channel;
+        })
+      );
+      
+      setChannels(channelsWithThreads);
+    } catch (err) {
+      console.error('チャンネルデータの処理に失敗しました:', err);
+      setError('データの処理に失敗しました。');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // データを更新
+  const refreshData = async () => {
+    try {
+      setIsLoading(true);
+      const firebaseChannels = await channelService.getAllChannels();
+      await processChannels(firebaseChannels);
+    } catch (error) {
+      console.error('データ更新エラー:', error);
+      setError('データの更新に失敗しました。');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // カテゴリー別にチャンネルを取得
   const getChannelsByCategory = (category: string): Channel[] => {
     return channels.filter(channel => channel.category === category);
   };
 
-  // チャンネル取得
+  // チャンネルIDでチャンネルを取得
   const getChannel = (channelId: string): Channel | undefined => {
     return channels.find(channel => channel.id === channelId);
   };
 
-  // スレッド取得
+  // スレッドを取得
   const getThread = (channelId: string, threadId: string): Thread | undefined => {
     const channel = getChannel(channelId);
     if (!channel) return undefined;
-    return channel.threads.find(thread => thread.id === threadId);
+    
+    const thread = channel.threads.find(thread => thread.id === threadId);
+    if (!thread) return undefined;
+    
+    // スレッドにメッセージがない場合は空の配列を設定
+    if (!thread.messages) {
+      thread.messages = [];
+    }
+    
+    return thread;
   };
 
-  // いいねの切り替え
-  const toggleLike = (channelId: string, threadId: string) => {
-    setChannels(prevChannels => {
-      return prevChannels.map(channel => {
-        if (channel.id !== channelId) return channel;
-        
-        const updatedThreads = channel.threads.map(thread => {
-          if (thread.id !== threadId) return thread;
+  // いいねをトグル
+  const toggleLike = async (channelId: string, threadId: string): Promise<void> => {
+    try {
+      const auth = getAuth();
+      if (!auth.currentUser) {
+        console.error('ログインが必要です');
+        return;
+      }
+      
+      const userId = auth.currentUser.uid;
+      
+      // Firebaseでいいねをトグル
+      const result = await threadService.toggleLikeThread(threadId, userId);
+      
+      // UIをすぐに更新（楽観的UIアップデート）
+      setChannels(prevChannels => {
+        return prevChannels.map(channel => {
+          if (channel.id !== channelId) return channel;
+          
+          const updatedThreads = channel.threads.map(thread => {
+            if (thread.id !== threadId) return thread;
+            
+            return {
+              ...thread,
+              isLiked: result.isLiked,
+              likes: result.likeCount,
+            };
+          });
           
           return {
-            ...thread,
-            likes: thread.isLiked ? thread.likes - 1 : thread.likes + 1,
-            isLiked: !thread.isLiked,
+            ...channel,
+            threads: updatedThreads,
           };
         });
-        
-        return {
-          ...channel,
-          threads: updatedThreads,
-        };
       });
-    });
-  };
-  
-  // スレッド作成
-  const createThread = async (
-    channelId: string, 
-    threadData: { 
-      title: string; 
-      content: string; 
-      author: { 
-        id: string; 
-        name: string; 
-        avatar: string; 
-      } 
+    } catch (error) {
+      console.error('いいねトグルエラー:', error);
     }
-  ): Promise<void> => {
-    // 新しいスレッドのIDを生成
-    const newThreadId = `thread${Date.now()}`;
-    
-    // 新しいスレッドを作成
-    const newThread: Thread = {
-      id: newThreadId,
-      title: threadData.title,
-      content: threadData.content,
-      author: threadData.author,
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      replies: 0,
-      isLiked: false,
-    };
-    
-    // チャンネルにスレッドを追加
-    setChannels(prevChannels => {
-      return prevChannels.map(channel => {
-        if (channel.id !== channelId) return channel;
-        
-        return {
-          ...channel,
-          threads: [newThread, ...channel.threads],
-        };
-      });
-    });
-    
-    // 実際のアプリではここでデータベースにスレッドを保存する処理を行う
-    // 今回はモックとして、Promiseを返す
-    return Promise.resolve();
+  };
+
+  // スレッド作成メソッド
+  const createThread = async (channelId: string, threadData: { 
+    title: string; 
+    content: string; 
+    author: { 
+      id: string; 
+      name: string; 
+      avatar: string; 
+    } 
+  }): Promise<string> => {
+    try {
+      const auth = getAuth();
+      if (!auth.currentUser) {
+        throw new Error('ログインが必要です');
+      }
+      
+      // Firebaseにスレッドを作成
+      const channel = await channelService.getChannelById(channelId);
+      if (!channel) throw new Error('チャンネルが見つかりません');
+      
+      // スレッド内容をログに記録（デバッグ用）
+      console.log('作成するスレッドの内容:', threadData.content);
+      
+      // Firebaseのスレッドモデルに合わせてデータを準備
+      const firebaseThreadData = {
+        title: threadData.title,
+        channelId: channelId,
+        instrument: channel.instrument,
+        authorId: auth.currentUser.uid,
+        authorName: threadData.author.name || auth.currentUser.displayName || '匿名ユーザー',
+        authorAvatar: threadData.author.avatar || auth.currentUser.photoURL || '',
+        content: threadData.content // スレッドに内容を含める
+      };
+      
+      // 初期メッセージを作成しない（null を渡す）
+      const newThread = await threadService.createThread(
+        firebaseThreadData, 
+        null // 初期メッセージを作成しない
+      );
+      
+      console.log('スレッドが作成されました:', newThread);
+      
+      // チャンネルリストを更新
+      await refreshData();
+      
+      return newThread.id;
+    } catch (error) {
+      console.error('スレッド作成エラー:', error);
+      throw error;
+    }
   };
 
   // チャンネル作成メソッド
   const createChannel = async (channelData: { name: string; description: string; category: string; creatorId: string }): Promise<string> => {
-    // チャンネルIDの生成（通常はバックエンドで行われる）
-    const newChannelId = `${channelData.category}-${channelData.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
-    
-    // 新しいチャンネルオブジェクトの作成
-    const newChannel: Channel = {
-      id: newChannelId,
-      name: channelData.name,
-      description: channelData.description,
-      category: channelData.category,
-      members: 1, // 作成者自身
-      threads: [], // 初期状態では空
-    };
-    
-    // チャンネル一覧に追加
-    setChannels(prev => [...prev, newChannel]);
-    
-    return newChannelId;
+    try {
+      // Firebaseにチャンネルを作成
+      const newChannel = await channelService.createChannel({
+        name: channelData.name,
+        description: channelData.description,
+        instrument: channelData.category,
+        icon: 'chatbubbles', // デフォルトアイコン
+        color: '#7F3DFF', // デフォルトカラー
+      });
+      
+      // チャンネルリストを更新
+      await refreshData();
+      
+      return newChannel.id;
+    } catch (error) {
+      console.error('チャンネル作成エラー:', error);
+      throw error;
+    }
   };
 
   // チャンネル削除メソッド
   const deleteChannel = async (channelId: string): Promise<boolean> => {
-    // 該当するチャンネルが存在するかチェック
-    const channelExists = channels.some(channel => channel.id === channelId);
-    
-    if (!channelExists) {
+    try {
+      // Firebaseからチャンネルを削除
+      await channelService.deleteChannel(channelId);
+      
+      // チャンネルリストを更新
+      await refreshData();
+      
+      return true;
+    } catch (error) {
+      console.error('チャンネル削除エラー:', error);
       return false;
     }
-    
-    // チャンネルを削除
-    setChannels(prev => prev.filter(channel => channel.id !== channelId));
-    
-    return true;
   };
 
   // ユーザーが作成したチャンネルを取得
   const getUserCreatedChannels = (userId: string): Channel[] => {
-    // 実際のアプリケーションでは、チャンネルデータに作成者IDが含まれるようにして、
-    // そのIDでフィルタリングするべきです。このサンプルでは単純化のために
-    // 渡されたuserIdに基づいてフィルタリングする機能はダミーとします。
-    
-    // 実際のフィルタリングロジックは、チャンネルデータに適切なフィールドがある場合に実装します
-    return [];
+    // 実際のアプリケーションでは、Firebaseからユーザーが作成したチャンネルを取得
+    // この実装はダミーです
+    return channels.filter(channel => {
+      const thread = channel.threads[0];
+      return thread && thread.author.id === userId;
+    });
+  };
+
+  // 特定のチャンネルのリアルタイム監視を設定
+  const subscribeToChannelUpdates = (channelId: string, callback: (channel: Channel | null) => void): () => void => {
+    return channelService.subscribeToChannel(channelId, async (fbChannel) => {
+      if (!fbChannel) {
+        callback(null);
+        return;
+      }
+      
+      try {
+        // スレッドデータを取得
+        const fbThreads = await threadService.getThreadsByChannel(fbChannel.id);
+        
+        // スレッドデータを変換
+        const threads = fbThreads.map((fbThread) => ({
+          id: fbThread.id,
+          title: fbThread.title,
+          content: '', // 初期値は空
+          author: {
+            id: fbThread.authorId,
+            name: fbThread.authorName,
+            avatar: fbThread.authorAvatar || '',
+          },
+          createdAt: fbThread.createdAt.toISOString(),
+          likes: 0,
+          replies: fbThread.messageCount,
+          isLiked: false,
+          channelId: fbChannel.id,
+        }));
+        
+        // チャンネルデータを作成
+        const channel: Channel = {
+          id: fbChannel.id,
+          name: fbChannel.name,
+          description: fbChannel.description,
+          category: fbChannel.instrument,
+          members: fbChannel.memberCount,
+          threads,
+        };
+        
+        callback(channel);
+      } catch (error) {
+        console.error(`チャンネル(${channelId})の監視処理エラー:`, error);
+        callback(null);
+      }
+    });
+  };
+
+  // チャンネル内のスレッドのリアルタイム監視を設定
+  const subscribeToThreadsInChannel = (channelId: string, callback: (threads: Thread[]) => void): () => void => {
+    return threadService.subscribeToThreadsByChannel(channelId, 'lastActivity', async (fbThreads) => {
+      try {
+        // ユーザーID（ログイン中の場合）
+        const auth = getAuth();
+        const currentUserId = auth.currentUser?.uid;
+        
+        // スレッドデータを変換
+        const threadsPromises = fbThreads.map(async (fbThread) => {
+          // いいねの状態を取得
+          let isLiked = false;
+          if (currentUserId) {
+            isLiked = await threadService.isThreadLikedByUser(fbThread.id, currentUserId);
+          }
+          
+          // いいね数を取得
+          const likeCount = fbThread.likeCount !== undefined 
+            ? fbThread.likeCount 
+            : await threadService.getThreadLikeCount(fbThread.id);
+          
+          // 各スレッドの内容を取得
+          let content = fbThread.content || '';
+          if (!content) {
+            try {
+              const messages = await messageService.getMessagesByThread(fbThread.id, 1);
+              if (messages.length > 0) {
+                content = messages[0].content;
+              }
+            } catch (error) {
+              console.error(`スレッド ${fbThread.id} の内容取得エラー:`, error);
+            }
+          }
+          
+          return {
+            id: fbThread.id,
+            title: fbThread.title,
+            content: content,
+            author: {
+              id: fbThread.authorId,
+              name: fbThread.authorName,
+              avatar: fbThread.authorAvatar || '',
+            },
+            createdAt: fbThread.createdAt.toISOString(),
+            likes: likeCount,
+            replies: fbThread.messageCount,
+            isLiked: isLiked,
+            channelId: fbThread.channelId,
+            messages: [], // 初期状態では空配列
+          };
+        });
+        
+        // すべてのスレッドデータを待機して返す
+        const threads = await Promise.all(threadsPromises);
+        callback(threads);
+      } catch (error) {
+        console.error(`チャンネル ${channelId} のスレッド監視処理エラー:`, error);
+        callback([]);
+      }
+    });
+  };
+
+  // HOTスレッドのリアルタイム監視を設定
+  const subscribeToHotThreads = (category: string | null, limit: number, callback: (threads: Thread[]) => void): () => void => {
+    return threadService.subscribeToHotThreads(category, limit, async (fbThreads) => {
+      try {
+        // ユーザーID（ログイン中の場合）
+        const auth = getAuth();
+        const currentUserId = auth.currentUser?.uid;
+        
+        // スレッドデータを変換
+        const threadsPromises = fbThreads.map(async (fbThread) => {
+          // いいねの状態を取得
+          let isLiked = false;
+          if (currentUserId) {
+            isLiked = await threadService.isThreadLikedByUser(fbThread.id, currentUserId);
+          }
+          
+          // いいね数を取得
+          const likeCount = fbThread.likeCount !== undefined 
+            ? fbThread.likeCount 
+            : await threadService.getThreadLikeCount(fbThread.id);
+          
+          // 各スレッドの内容を取得
+          let content = fbThread.content || '';
+          if (!content) {
+            try {
+              const messages = await messageService.getMessagesByThread(fbThread.id, 1);
+              if (messages.length > 0) {
+                content = messages[0].content;
+              }
+            } catch (error) {
+              console.error(`HOTスレッド ${fbThread.id} の内容取得エラー:`, error);
+            }
+          }
+          
+          return {
+            id: fbThread.id,
+            title: fbThread.title,
+            content: content,
+            author: {
+              id: fbThread.authorId,
+              name: fbThread.authorName,
+              avatar: fbThread.authorAvatar || '',
+            },
+            createdAt: fbThread.createdAt.toISOString(),
+            likes: likeCount,
+            replies: fbThread.messageCount,
+            isLiked: isLiked,
+            channelId: fbThread.channelId,
+            messages: [], // 初期状態では空配列
+          };
+        });
+        
+        // すべてのスレッドデータを待機して返す
+        const threads = await Promise.all(threadsPromises);
+        callback(threads);
+      } catch (error) {
+        console.error(`HOTスレッド監視処理エラー:`, error);
+        callback([]);
+      }
+    });
   };
 
   return (
     <DataContext.Provider
       value={{
         channels,
+        isLoading,
+        error,
+        refreshData,
         getChannelsByCategory,
         getChannel,
         getThread,
@@ -984,6 +1341,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         createChannel,
         deleteChannel,
         getUserCreatedChannels,
+        subscribeToChannelUpdates,
+        subscribeToThreadsInChannel,
+        subscribeToHotThreads,
       }}
     >
       {children}

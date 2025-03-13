@@ -34,9 +34,11 @@ export interface Thread {
   authorId: string;
   authorName: string;
   authorAvatar?: string;
+  content?: string;
   createdAt: Date;
   lastActivity: Date;
   messageCount: number;
+  likeCount?: number; // いいね数
   isPinned: boolean;
 }
 

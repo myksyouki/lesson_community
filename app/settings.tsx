@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,6 +6,8 @@ import { Button, Card, Divider, List, Switch, IconButton } from 'react-native-pa
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useUser } from '../contexts/UserContext';
+import { userService } from '../firebase/services';
+import { useFirebase } from '../contexts/FirebaseContext';
 
 // 設定項目の型定義
 type SettingItemBase = {
@@ -40,8 +42,67 @@ type SettingSection = {
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { userState, setDarkMode, setNotifications, setFabEnabled } = useUser();
+  const { userState, setDarkMode, setNotifications, setFabEnabled, updateProfile } = useUser();
   const { darkMode: userDarkMode, notifications: userNotifications, fabEnabled: userFabEnabled } = userState;
+  const { user } = useFirebase();
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  
+  // ユーザー設定をFirestoreから読み込む
+  useEffect(() => {
+    const loadUserSettings = async () => {
+      if (!user || !user.id) return;
+      
+      try {
+        const userSettings = await userService.getUserSettings(user.id);
+        if (userSettings) {
+          // 設定をコンテキストに反映
+          updateProfile({
+            darkMode: userSettings.darkMode ?? userDarkMode,
+            notifications: userSettings.notifications ?? userNotifications,
+            fabEnabled: userSettings.fabEnabled ?? userFabEnabled
+          });
+        }
+      } catch (error) {
+        console.error('設定の読み込みに失敗しました:', error);
+      }
+    };
+    
+    loadUserSettings();
+  }, [user]);
+  
+  // 設定の変更をFirestoreに保存する関数
+  const saveSettings = async (key: string, value: any) => {
+    if (!user || !user.id) return;
+    
+    setIsSaving(true);
+    try {
+      await userService.updateUserSettings(user.id, { [key]: value });
+      console.log(`設定を保存しました: ${key} = ${value}`);
+    } catch (error) {
+      console.error('設定の保存に失敗しました:', error);
+      Alert.alert('エラー', '設定の保存に失敗しました。ネットワーク接続を確認してください。');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  // ダークモード設定変更時
+  const handleDarkModeChange = (value: boolean) => {
+    setDarkMode(value);
+    saveSettings('darkMode', value);
+  };
+  
+  // 通知設定変更時
+  const handleNotificationsChange = (value: boolean) => {
+    setNotifications(value);
+    saveSettings('notifications', value);
+  };
+  
+  // 音楽メニューボタン設定変更時
+  const handleFabEnabledChange = (value: boolean) => {
+    setFabEnabled(value);
+    saveSettings('fabEnabled', value);
+  };
   
   // 設定項目のセクション
   const settingSections: SettingSection[] = [
@@ -53,21 +114,21 @@ export default function SettingsScreen() {
           icon: 'moon',
           type: 'switch',
           value: userDarkMode,
-          onValueChange: setDarkMode,
+          onValueChange: handleDarkModeChange,
         },
         {
           title: '通知',
           icon: 'notifications',
           type: 'switch',
           value: userNotifications,
-          onValueChange: setNotifications,
+          onValueChange: handleNotificationsChange,
         },
         {
           title: '音楽メニューボタン',
           icon: 'musical-notes',
           type: 'switch',
           value: userFabEnabled,
-          onValueChange: setFabEnabled,
+          onValueChange: handleFabEnabledChange,
         },
         {
           title: '言語',
@@ -248,9 +309,19 @@ export default function SettingsScreen() {
                 },
                 {
                   text: 'ログアウト',
-                  onPress: () => {
-                    // ログアウト処理
-                    router.replace('/onboarding');
+                  onPress: async () => {
+                    try {
+                      // Firebase auth.tsからimportしたsignOut関数を使用してログアウト
+                      const { auth } = require('../firebase/config');
+                      const { signOut } = require('firebase/auth');
+                      await signOut(auth);
+                      
+                      // ログアウト後はログイン画面に移動
+                      router.replace('/login');
+                    } catch (error) {
+                      console.error('ログアウトエラー:', error);
+                      Alert.alert('エラー', 'ログアウトに失敗しました。もう一度お試しください。');
+                    }
                   },
                   style: 'destructive',
                 },

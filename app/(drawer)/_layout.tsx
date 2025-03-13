@@ -126,24 +126,17 @@ export default function DrawerLayout() {
           }} 
         />
         <Stack.Screen 
-          name="channels" 
+          name="profile" 
           options={{ 
             headerShown: true,
-            header: () => <CustomHeader title="チャンネル一覧" />,
+            header: () => <CustomHeader title="プロフィール" />,
           }} 
         />
         <Stack.Screen 
-          name="category" 
+          name="category/index" 
           options={{ 
             headerShown: true,
-            header: () => <CustomHeader title="チャンネル一覧" />,
-          }} 
-        />
-        <Stack.Screen 
-          name="settings" 
-          options={{ 
-            headerShown: true,
-            header: () => <CustomHeader title="設定" />,
+            header: () => <CustomHeader title="カテゴリー" />,
           }} 
         />
       </Stack>

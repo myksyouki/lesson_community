@@ -57,6 +57,21 @@ export default function LoginScreen() {
     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID, // Android用
   });
   
+  // デバッグ用に環境変数の存在をログに出力
+  useEffect(() => {
+    console.log('Firebase設定:', {
+      apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ? 'セット済み' : '未設定',
+      authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ? 'セット済み' : '未設定',
+      projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ? 'セット済み' : '未設定',
+    });
+    
+    console.log('Google認証設定:', {
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ? 'セット済み' : '未設定',
+      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ? 'セット済み' : '未設定',
+      androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ? 'セット済み' : '未設定',
+    });
+  }, []);
+
   // アニメーション用の値
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -160,9 +175,15 @@ export default function LoginScreen() {
   const handleGoogleLogin = async (idToken: string) => {
     try {
       setIsGoogleLoading(true);
+      console.log('Googleログイン開始...');
       const auth = getAuth();
       const credential = GoogleAuthProvider.credential(idToken);
+      
+      // より詳細なデバッグ情報を追加
+      console.log('Google認証情報を作成しました');
+      
       const userCredential = await signInWithCredential(auth, credential);
+      console.log('Google認証成功:', userCredential.user.uid);
       
       // Firestoreにユーザー情報を保存
       if (userCredential.user) {
@@ -175,7 +196,9 @@ export default function LoginScreen() {
           lastLogin: new Date()
         };
         
+        console.log('ユーザー情報をFirestoreに保存します:', userData.id);
         await setDoc(doc(db, 'users', userCredential.user.uid), userData, { merge: true });
+        console.log('ユーザー情報の保存が完了しました');
       }
       
       console.log('Googleログイン成功');
@@ -183,7 +206,23 @@ export default function LoginScreen() {
       router.replace('/(drawer)');
     } catch (error) {
       console.error('Google認証エラー:', error);
-      const message = error instanceof Error ? error.message : 'Google認証に失敗しました';
+      // より具体的なエラーメッセージを表示
+      let message = 'Google認証に失敗しました';
+      if (error instanceof Error) {
+        if (error.message.includes('auth/invalid-credential')) {
+          message = '無効な認証情報です。再度お試しください。';
+        } else if (error.message.includes('auth/network-request-failed')) {
+          message = 'ネットワーク接続エラーが発生しました。インターネット接続を確認してください。';
+        } else if (error.message.includes('auth/user-disabled')) {
+          message = 'このアカウントは無効化されています。';
+        } else if (error.message.includes('auth/user-not-found')) {
+          message = 'アカウントが見つかりません。';
+        } else if (error.message.includes('auth/operation-not-allowed')) {
+          message = 'この操作は許可されていません。';
+        } else {
+          message = error.message;
+        }
+      }
       setErrorMessage(message);
     } finally {
       setIsGoogleLoading(false);
@@ -213,16 +252,21 @@ export default function LoginScreen() {
       const auth = getAuth();
       if (isLogin) {
         // ログイン処理
+        console.log('メールログイン開始...');
         await signInWithEmailAndPassword(auth, email, password);
         console.log('ログイン成功');
       } else {
         // 新規登録処理
+        console.log('アカウント作成開始...');
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        console.log('ユーザーアカウント作成成功:', userCredential.user.uid);
+        
         // 名前を設定
         if (userCredential.user) {
           await updateProfile(userCredential.user, {
             displayName: name
           });
+          console.log('ユーザープロフィール更新成功');
           
           // Firestoreにユーザー情報を保存
           const userData = {
@@ -233,7 +277,9 @@ export default function LoginScreen() {
             lastLogin: new Date()
           };
           
+          console.log('ユーザー情報をFirestoreに保存します:', userData.id);
           await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+          console.log('ユーザー情報の保存が完了しました');
         }
         console.log('アカウント作成成功');
       }
@@ -241,7 +287,82 @@ export default function LoginScreen() {
       router.replace('/(drawer)');
     } catch (error) {
       console.error('認証エラー:', error);
-      const message = error instanceof Error ? error.message : '認証に失敗しました';
+      // より具体的なエラーメッセージを表示
+      let message = '認証に失敗しました';
+      if (error instanceof Error) {
+        if (error.message.includes('auth/invalid-email')) {
+          message = 'メールアドレスの形式が正しくありません。';
+        } else if (error.message.includes('auth/user-disabled')) {
+          message = 'このアカウントは無効化されています。';
+        } else if (error.message.includes('auth/user-not-found')) {
+          message = 'アカウントが見つかりません。登録されていないか、削除された可能性があります。';
+        } else if (error.message.includes('auth/wrong-password')) {
+          message = 'パスワードが間違っています。';
+        } else if (error.message.includes('auth/email-already-in-use')) {
+          message = 'このメールアドレスは既に使用されています。';
+        } else if (error.message.includes('auth/weak-password')) {
+          message = 'パスワードが脆弱です。より強力なパスワードを設定してください。';
+        } else if (error.message.includes('auth/network-request-failed')) {
+          message = 'ネットワーク接続エラーが発生しました。インターネット接続を確認してください。';
+        } else if (error.message.includes('auth/too-many-requests')) {
+          message = 'ログイン試行回数が多すぎます。しばらく経ってから再度お試しください。';
+        } else if (error.message.includes('auth/invalid-credential')) {
+          message = '認証情報が無効です。メールアドレスとパスワードを確認してください。';
+        } else {
+          message = error.message;
+        }
+      }
+      setErrorMessage(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // テスト用のログインボタンを追加
+  const handleTestLogin = async () => {
+    setIsLoading(true);
+    try {
+      console.log('テストログイン開始...');
+      const testEmail = 'test@example.com';
+      const testPassword = 'testpassword123';
+      
+      const auth = getAuth();
+      
+      try {
+        // テストユーザーでログイン試行
+        await signInWithEmailAndPassword(auth, testEmail, testPassword);
+        console.log('テストログイン成功');
+        router.replace('/(drawer)');
+      } catch (loginError) {
+        console.log('テストユーザーが存在しないため作成します');
+        
+        // テストユーザーが存在しない場合は作成
+        const userCredential = await createUserWithEmailAndPassword(auth, testEmail, testPassword);
+        
+        // 名前を設定
+        await updateProfile(userCredential.user, {
+          displayName: 'テストユーザー'
+        });
+        
+        // Firestoreにユーザー情報を保存
+        const userData = {
+          id: userCredential.user.uid,
+          name: 'テストユーザー',
+          email: testEmail,
+          createdAt: new Date(),
+          lastLogin: new Date()
+        };
+        
+        await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+        console.log('テストユーザー作成およびログイン成功');
+        router.replace('/(drawer)');
+      }
+    } catch (error) {
+      console.error('テストログインエラー:', error);
+      let message = 'テストログインに失敗しました';
+      if (error instanceof Error) {
+        message = error.message;
+      }
       setErrorMessage(message);
     } finally {
       setIsLoading(false);
@@ -408,6 +529,24 @@ export default function LoginScreen() {
                     <Ionicons name="logo-google" size={20} color="#fff" style={styles.googleIcon} />
                     <Text style={styles.googleButtonText}>
                       Googleでログイン
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* テストログインボタン */}
+              <TouchableOpacity 
+                style={[styles.googleButton, { backgroundColor: 'rgba(79, 195, 247, 0.2)' }]} 
+                onPress={handleTestLogin}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="construct-outline" size={20} color="#4fc3f7" style={styles.googleIcon} />
+                    <Text style={[styles.googleButtonText, { color: '#4fc3f7' }]}>
+                      テストユーザーでログイン
                     </Text>
                   </>
                 )}

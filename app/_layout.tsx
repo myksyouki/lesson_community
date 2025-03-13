@@ -1,13 +1,13 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { PaperProvider } from 'react-native-paper';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack, useRouter, useSegments, ErrorBoundary } from 'expo-router';
-import { FirebaseProvider, useFirebase } from '../contexts/FirebaseContext';
-import { UserProvider } from '../contexts/UserContext';
-import { DataProvider } from '../contexts/DataContext';
+import { FirebaseProvider, useFirebase } from '@/contexts/FirebaseContext';
+import { UserProvider } from '@/contexts/UserContext';
+import { DataProvider } from '@/contexts/DataContext';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from '../hooks/useColorScheme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -29,43 +29,60 @@ function AuthStateListener({ children }: { children: React.ReactNode }) {
   const { user, loading } = useFirebase();
   const segments = useSegments();
   const router = useRouter();
+  const hasRedirectedRef = useRef(false);
 
   useEffect(() => {
-    console.log('AuthStateListener: user=', user?.id, 'loading=', loading, 'segments=', segments);
-    
+    // ローディング中は何もしない
     if (loading) return;
-
+    
+    // すでにリダイレクト処理を行ったかどうかをチェック
+    if (hasRedirectedRef.current) return;
+    
+    // 現在のルート情報を取得
     const segmentsJoined = segments.join('/');
     const isLoginScreen = segments[0] === 'login';
     const isTabsRoute = segments[0] === '(tabs)';
     const isDrawerRoute = segments[0] === '(drawer)';
-    const isProtectedRoute = isTabsRoute || segments[0] === undefined;
+    const isProtectedRoute = isTabsRoute || isDrawerRoute || segments[0] === undefined;
     const isRootPath = segmentsJoined === '' || segments[0] === undefined;
+    
+    console.log('[Auth] 状態:', user?.id ? '認証済み' : '未認証', '現在のルート:', segmentsJoined);
 
-    console.log('Route check: isLoginScreen=', isLoginScreen, 'isProtectedRoute=', isProtectedRoute, 'segments=', segmentsJoined);
-
-    if (!user && (isProtectedRoute || isDrawerRoute)) {
-      // 未認証ユーザーが保護されたルートにアクセスした場合、ログイン画面にリダイレクト
-      console.log('未認証ユーザーが保護されたルートにアクセスしたため、ログイン画面にリダイレクト');
-      router.replace('/login');
+    // リダイレクト処理
+    let shouldRedirectToLogin = false;
+    let shouldRedirectToHome = false;
+    
+    if (!user && isProtectedRoute) {
+      // 未認証ユーザーが保護されたルートにアクセスした場合
+      console.log('[Auth] 未認証ユーザーが保護されたルート→ログイン画面へ');
+      shouldRedirectToLogin = true;
     } else if (user && isLoginScreen) {
-      // 認証済みユーザーがログイン画面にアクセスした場合、ホーム画面にリダイレクト
-      console.log('認証済みユーザーがログイン画面にアクセスしたため、ホーム画面にリダイレクト');
-      router.replace('/(drawer)');
-    } else if (!user && !isLoginScreen && segments[0] !== undefined) {
-      // 未認証ユーザーがログイン画面以外にアクセスした場合、ログイン画面にリダイレクト
-      console.log('未認証ユーザーがログイン画面以外にアクセスしたため、ログイン画面にリダイレクト paths:', segmentsJoined);
-      router.replace('/login');
+      // 認証済みユーザーがログイン画面にアクセスした場合
+      console.log('[Auth] 認証済みユーザーがログイン画面→ホーム画面へ');
+      shouldRedirectToHome = true;
+    } else if (!user && !isLoginScreen && segments[0] !== 'onboarding' && segments[0] !== 'instrument-selector') {
+      // 未認証ユーザーがログイン画面以外のルートにアクセスした場合（一部例外あり）
+      console.log('[Auth] 未認証ユーザーが保護されていないルート→ログイン画面へ');
+      shouldRedirectToLogin = true;
     } else if (user && isRootPath) {
-      // 認証済みユーザーがルートパスにアクセスした場合、ホーム画面にリダイレクト
-      console.log('認証済みユーザーがルートパスにアクセスしたため、ホーム画面にリダイレクト');
-      router.replace('/(drawer)');
+      // 認証済みユーザーがルートパスにアクセスした場合
+      console.log('[Auth] 認証済みユーザーがルートパス→ホーム画面へ');
+      shouldRedirectToHome = true;
     } else if (user && isTabsRoute) {
-      // 認証済みユーザーがタブルートにアクセスした場合、ホーム画面にリダイレクト
-      console.log('認証済みユーザーがタブルートにアクセスしたため、ホーム画面にリダイレクト');
+      // 認証済みユーザーがタブルートにアクセスした場合
+      console.log('[Auth] 認証済みユーザーがタブルート→ホーム画面へ');
+      shouldRedirectToHome = true;
+    }
+    
+    // リダイレクトが必要な場合のみ実行
+    if (shouldRedirectToLogin) {
+      hasRedirectedRef.current = true;
+      router.replace('/login');
+    } else if (shouldRedirectToHome) {
+      hasRedirectedRef.current = true;
       router.replace('/(drawer)');
     }
-  }, [user, loading, segments]);
+  }, [user, loading]); // segmentsは依存配列から除外し、認証状態の変更時のみ実行
 
   if (loading) {
     return (
@@ -105,25 +122,48 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
+  // React Native Paperのテーマ設定
+  const paperTheme = colorScheme === 'dark' 
+    ? { 
+        ...require('react-native-paper').MD3DarkTheme,
+        colors: {
+          ...require('react-native-paper').MD3DarkTheme.colors,
+          primary: '#7F3DFF',
+          secondary: '#3D7FFF',
+        }
+      } 
+    : { 
+        ...require('react-native-paper').MD3LightTheme,
+        colors: {
+          ...require('react-native-paper').MD3LightTheme.colors,
+          primary: '#7F3DFF',
+          secondary: '#3D7FFF',
+        }
+      };
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <FirebaseProvider>
-          <UserProvider>
+        <UserProvider>
+          <FirebaseProvider>
             <DataProvider>
-              <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                <AuthStateListener>
-                  <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen name="login" options={{ headerShown: false }} />
-                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-                  </Stack>
-                </AuthStateListener>
-              </ThemeProvider>
+              {/* React Native Paperのプロバイダーを追加 */}
+              <PaperProvider theme={paperTheme}>
+                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                  <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+                  <AuthStateListener>
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="login" options={{ headerShown: false }} />
+                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                      <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
+                      <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+                    </Stack>
+                  </AuthStateListener>
+                </ThemeProvider>
+              </PaperProvider>
             </DataProvider>
-          </UserProvider>
-        </FirebaseProvider>
+          </FirebaseProvider>
+        </UserProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

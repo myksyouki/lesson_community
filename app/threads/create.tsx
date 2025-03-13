@@ -58,8 +58,8 @@ export default function CreateThreadScreen() {
         },
       });
       
-      // 成功したら前の画面に戻る
-      router.back();
+      // チャンネル画面に戻る（replace を使って履歴スタックを置き換え）
+      router.replace(`/channels/${channel.id}`);
     } catch (error) {
       console.error('スレッド作成エラー:', error);
       // エラー処理（実際のアプリではエラーメッセージを表示する）

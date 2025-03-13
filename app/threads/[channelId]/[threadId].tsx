@@ -6,11 +6,16 @@ import { IconButton, Avatar, Divider, Menu, Badge } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useUser } from '../../../contexts/UserContext';
-import { useData } from '../../../contexts/DataContext';
+import { useData, Message } from '../../../contexts/DataContext';
 import MusicFAB from '../../../components/MusicFAB';
 import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
+// Firebase関連のインポート
+import { collection, doc, getDoc, getDocs, query, where, orderBy, Timestamp, addDoc, updateDoc, increment } from 'firebase/firestore';
+import { db } from '../../../firebase/config';
+import { threadService, messageService } from '../../../firebase/services';
+import { getAuth } from 'firebase/auth';
 
 // 画面サイズを取得
 const { width } = Dimensions.get('window');
@@ -143,19 +148,6 @@ interface Author {
   id: string;
   name: string;
   avatar: string;
-}
-
-interface Message {
-  id: string;
-  author: Author;
-  content: string;
-  createdAt: string;
-  image?: string;
-  replies?: number;
-  likes?: number;
-  isLiked?: boolean;
-  replyToId?: string; // 返信先メッセージのID
-  replyToAuthor?: string; // 返信先の著者名
 }
 
 interface Thread {
@@ -373,13 +365,15 @@ export default function ThreadScreen() {
   const router = useRouter();
   const { channelId, threadId } = useLocalSearchParams();
   const { userState } = useUser();
-  const { getThread, getChannel, toggleLike } = useData();
+  const { getChannel } = useData();
   const [message, setMessage] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const [isReplying, setIsReplying] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ id: string, author: string } | null>(null);
   const [messageList, setMessageList] = useState<Message[]>([]);
+  const [thread, setThread] = useState<Thread | null>(null);
+  const [loading, setLoading] = useState(true);
   
   // スワイプアニメーション用の値
   const translateX = new RNAnimated.Value(0);
@@ -387,19 +381,108 @@ export default function ThreadScreen() {
   // チャンネル情報
   const channel = getChannel(channelId as string);
   
-  // スレッド情報
-  const thread = getThread(channelId as string, threadId as string);
+  // スレッド情報を取得
+  useEffect(() => {
+    const fetchThreadData = async () => {
+      try {
+        setLoading(true);
+        // Firebaseからスレッドデータを取得（修正部分）
+        const threadDocRef = doc(db, 'threads', threadId as string);
+        const threadDocSnap = await getDoc(threadDocRef);
+        
+        if (!threadDocSnap.exists()) {
+          console.error('スレッドが見つかりません');
+          return;
+        }
+        
+        const threadData = threadDocSnap.data();
+        
+        // 現在のユーザーID
+        const auth = getAuth();
+        const currentUserId = auth.currentUser?.uid;
+        
+        // メッセージを取得（修正部分）
+        const messagesQuery = query(
+          collection(db, 'messages'),
+          where('threadId', '==', threadId),
+          orderBy('timestamp', 'asc')
+        );
+        
+        const messagesSnap = await getDocs(messagesQuery);
+        
+        const messagesPromises = messagesSnap.docs.map(async (doc) => {
+          const data = doc.data();
+          
+          // いいねの状態を取得
+          let isLiked = false;
+          let likeCount = 0;
+          
+          if (currentUserId && data.reactions) {
+            // いいねの状態を確認
+            const heartReaction = data.reactions.find((r: any) => r.emoji === '❤️');
+            if (heartReaction) {
+              isLiked = heartReaction.users.includes(currentUserId);
+              likeCount = heartReaction.count;
+            }
+          }
+          
+          return {
+            id: doc.id,
+            content: data.content,
+            author: {
+              id: data.userId,
+              name: data.userName,
+              avatar: data.userAvatar || 'https://randomuser.me/api/portraits/lego/1.jpg',
+            },
+            createdAt: data.timestamp instanceof Timestamp ? data.timestamp.toDate().toISOString() : new Date().toISOString(),
+            likes: likeCount,
+            isLiked: isLiked,
+            replyToId: data.replyToId,
+            replyToAuthor: data.replyToAuthor,
+          };
+        });
+        
+        const messages = await Promise.all(messagesPromises);
+        
+        // スレッド情報をセット
+        setThread({
+          id: threadDocSnap.id,
+          title: threadData?.title || 'タイトルなし',
+          content: threadData?.content || '',
+          author: {
+            id: threadData?.authorId || '',
+            name: threadData?.authorName || 'Unknown',
+            avatar: threadData?.authorAvatar || 'https://randomuser.me/api/portraits/lego/1.jpg',
+          },
+          createdAt: threadData?.createdAt instanceof Timestamp ? threadData?.createdAt.toDate().toISOString() : new Date().toISOString(),
+          likes: 0,
+          messages: messages,
+        });
+        
+        setMessageList(messages);
+      } catch (error) {
+        console.error('スレッドデータ取得エラー:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (threadId) {
+      fetchThreadData();
+    }
+  }, [threadId]);
   
   // 現在の楽器カテゴリーの色
-  const categoryColor = channel?.color || '#7F3DFF';
   const currentInstrument = INSTRUMENT_CATEGORIES.find(cat => cat.id === channel?.category);
+  const categoryColor = currentInstrument?.color || '#7F3DFF';
   
   // メッセージ一覧を更新
   useEffect(() => {
-    if (thread?.messages) {
+    if (thread?.messages && !messageList.length) {
+      // 初回ロード時や再読み込み時のみmessageListを更新
       setMessageList(thread.messages);
     }
-  }, [thread]);
+  }, [thread?.messages, messageList.length]);
   
   // 初回レンダリング時に最下部にスクロール
   useEffect(() => {
@@ -411,7 +494,7 @@ export default function ThreadScreen() {
   }, []);
   
   // メッセージ送信処理
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (message.trim() === '') return;
     
     // 新しいメッセージ
@@ -427,28 +510,63 @@ export default function ThreadScreen() {
       likes: 0,
       isLiked: false,
       // 返信情報
-      replyToId: replyingTo?.id,
-      replyToAuthor: replyingTo?.author,
+      replyToId: replyingTo?.id || undefined,
+      replyToAuthor: replyingTo?.author || undefined,
     };
     
-    // メッセージリストを更新
-    setMessageList(prev => [...prev, newMessage]);
-    
-    // 入力欄をクリア
-    setMessage('');
-    setIsReplying(false);
-    setReplyingTo(null);
-    
-    // キーボードを閉じる
-    if (inputRef.current) {
-      inputRef.current.blur();
-    }
-    
-    // 最下部にスクロール
-    if (flatListRef.current) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+    try {
+      // Firebaseにメッセージを追加するデータを準備
+      const messageData: any = {
+        threadId,
+        content: message,
+        userId: userState.username,
+        userName: userState.username,
+        userAvatar: userState.avatarUrl,
+        timestamp: new Date(),
+        reactions: [],
+      };
+      
+      // 返信情報が存在する場合のみフィールドを追加
+      if (replyingTo?.id) {
+        messageData.replyToId = replyingTo.id;
+      }
+      
+      if (replyingTo?.author) {
+        messageData.replyToAuthor = replyingTo.author;
+      }
+      
+      // Firebaseに保存する実装
+      const messageRef = await addDoc(collection(db, 'messages'), messageData);
+      console.log('メッセージ追加成功:', messageRef.id);
+      
+      // スレッドのメッセージ数を更新
+      const threadDocRef = doc(db, 'threads', threadId as string);
+      await updateDoc(threadDocRef, {
+        messageCount: increment(1),
+        lastActivity: new Date()
+      });
+      
+      // メッセージリストを更新
+      setMessageList(prev => [...prev, {...newMessage, id: messageRef.id}]);
+      
+      // 入力欄をクリア
+      setMessage('');
+      setIsReplying(false);
+      setReplyingTo(null);
+      
+      // キーボードを閉じる
+      if (inputRef.current) {
+        inputRef.current.blur();
+      }
+      
+      // 最下部にスクロール
+      if (flatListRef.current) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    } catch (error) {
+      console.error('メッセージ送信エラー:', error);
     }
   };
   
@@ -464,25 +582,80 @@ export default function ThreadScreen() {
   };
   
   // いいねボタンを押した時の処理
-  const handleLike = (messageId: string) => {
-    // メッセージのいいね状態を切り替え
-    setMessageList(prev => 
-      prev.map(msg => 
-        msg.id === messageId
-          ? { 
-              ...msg, 
-              isLiked: !msg.isLiked, 
-              likes: msg.isLiked ? (msg.likes || 1) - 1 : (msg.likes || 0) + 1 
-            }
-          : msg
-      )
-    );
+  const handleLike = async (messageId: string) => {
+    try {
+      const auth = getAuth();
+      if (!auth.currentUser) return; // ログインしていない場合は何もしない
+      
+      const userId = auth.currentUser.uid;
+      
+      // いいね前のメッセージの状態をログ出力
+      const targetMessage = messageList.find(msg => msg.id === messageId);
+      console.log('いいね前のメッセージ:', {
+        id: targetMessage?.id,
+        content: targetMessage?.content?.substring(0, 20) + '...',
+        replyToId: targetMessage?.replyToId,
+        isLiked: targetMessage?.isLiked,
+        likes: targetMessage?.likes
+      });
+      
+      // Firebaseでメッセージのいいねを更新
+      const result = await messageService.toggleLikeMessage(messageId, userId);
+      
+      // UIを更新（応答性を高めるため、API応答を待たずに楽観的に更新）
+      setMessageList(prevList => {
+        // 新しい配列を作成（参照を変更するため）
+        return prevList.map(msg => {
+          if (msg.id !== messageId) {
+            return msg; // 対象外のメッセージはそのまま
+          }
+          
+          // 対象のメッセージのみ更新（すべてのプロパティを保持）
+          const updatedMsg = {
+            ...msg,
+            isLiked: result.isLiked,
+            likes: result.likeCount
+          };
+          
+          // 更新後のメッセージをログに出力
+          console.log('いいね後のメッセージ:', {
+            id: updatedMsg.id,
+            content: updatedMsg.content?.substring(0, 20) + '...',
+            replyToId: updatedMsg.replyToId,
+            isLiked: updatedMsg.isLiked,
+            likes: updatedMsg.likes
+          });
+          
+          return updatedMsg;
+        });
+      });
+    } catch (error) {
+      console.error('メッセージいいねエラー:', error);
+      // エラーが発生した場合でもUIが壊れないようにする
+    }
   };
   
   // スレッドの「いいね」処理
-  const handleThreadLike = () => {
-    if (thread) {
-      toggleLike(channelId as string, threadId as string);
+  const handleThreadLike = async () => {
+    if (thread && userState.username) {
+      try {
+        // Firebaseでいいねを処理
+        const result = await threadService.toggleLikeThread(thread.id, userState.username);
+        
+        // スレッド情報を更新（messagesは更新しない）
+        setThread(prevThread => {
+          if (!prevThread) return null;
+          return {
+            ...prevThread,
+            isLiked: result.isLiked,
+            likes: result.likeCount,
+            // messagesは既存のものを維持
+            messages: prevThread.messages
+          };
+        });
+      } catch (error) {
+        console.error('いいねエラー:', error);
+      }
     }
   };
   
