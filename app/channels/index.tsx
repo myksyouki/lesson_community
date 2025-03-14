@@ -1,355 +1,753 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Dimensions, SafeAreaView } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Searchbar, Card } from 'react-native-paper';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, FlatList, RefreshControl, Dimensions, PanResponder } from 'react-native';
+import { useRouter, useNavigation } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Searchbar, IconButton, ActivityIndicator, FAB, Card } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useUser } from '../../contexts/UserContext';
 import { useData } from '../../contexts/DataContext';
-import MusicFAB from '../../components/MusicFAB';
-import { LinearGradient } from 'expo-linear-gradient';
-import { FAB } from 'react-native-paper';
+import { DrawerActions } from '@react-navigation/native';
+import MusicWaveAnimation from '../../components/MusicWaveAnimation';
+import MusicGradientBackground from '../../components/MusicGradientBackground';
+import { useSideMenu } from '../../contexts/SideMenuContext';
+import { useSharedValue } from 'react-native-reanimated';
+// テーマとカテゴリーを一元管理されたファイルからインポート
+import { 
+  MUSIC_THEMES, 
+  INSTRUMENT_CATEGORIES,
+  getThemeForCategory, 
+  MusicTheme 
+} from '../../theme/musicThemes';
+// Firebase imports
+import { db } from '../../firebase/config';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 
-// 画面サイズを取得
+// 画面の幅を取得
 const { width } = Dimensions.get('window');
 
-// 楽器カテゴリーのデータ
-const INSTRUMENT_CATEGORIES = [
-  { id: 'flute', name: 'フルート', icon: 'musical-notes', color: '#7F3DFF' },
-  { id: 'clarinet', name: 'クラリネット', icon: 'musical-notes', color: '#FF3D77' },
-  { id: 'oboe', name: 'オーボエ', icon: 'musical-notes', color: '#3D7FFF' },
-  { id: 'fagotto', name: 'ファゴット', icon: 'musical-notes', color: '#FF9F3D' },
-  { id: 'saxophone', name: 'サクソフォン', icon: 'musical-notes', color: '#3DFFCF' },
-  { id: 'horn', name: 'ホルン', icon: 'musical-notes', color: '#FF3D3D' },
-  { id: 'euphonium', name: 'ユーフォニアム', icon: 'musical-notes', color: '#B03DFF' },
-  { id: 'trumpet', name: 'トランペット', icon: 'musical-notes', color: '#FFD93D' },
-  { id: 'trombone', name: 'トロンボーン', icon: 'musical-notes', color: '#3DFFB0' },
-  { id: 'tuba', name: 'チューバ', icon: 'musical-notes', color: '#FF6B3D' },
-  { id: 'percussion', name: 'パーカッション', icon: 'musical-notes', color: '#3DB0FF' },
+// 楽器タグの定義
+const INSTRUMENT_TAGS = [
+  'ピアノ', 'ギター', 'ドラム', 'ベース', 'バイオリン', 
+  'サックス', '管楽器', '打楽器', 'ボーカル', 'その他'
 ];
 
-// ブレッドクラムナビゲーション
-function BreadcrumbNavigation({ categoryName }: { categoryName: string }) {
-  const router = useRouter();
-  
-  return (
-    <View style={styles.breadcrumbContainer}>
-      <LinearGradient
-        colors={['rgba(30, 30, 46, 0.8)', 'rgba(20, 20, 30, 0.6)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.breadcrumbGradient}
-      >
-        <TouchableOpacity 
-          style={styles.breadcrumbItem}
-          onPress={() => router.push('/')}
-        >
-          <Ionicons name="home" size={16} color="#FFFFFF" />
-          <Text style={styles.breadcrumbText}>ホーム</Text>
-        </TouchableOpacity>
-        
-        <View style={styles.breadcrumbSeparatorContainer}>
-          <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.6)" />
-        </View>
-        
-        <View style={styles.breadcrumbActiveItem}>
-          <Ionicons name="list" size={16} color="#FFFFFF" />
-          <Text style={styles.breadcrumbActiveText}>{categoryName}チャンネル</Text>
-        </View>
-      </LinearGradient>
-    </View>
-  );
+// チャンネルの型定義
+interface Channel {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  imageUrl?: string;
+  memberCount?: number;
+  tags?: string[];
 }
 
-// チャンネルアイテムコンポーネント
-const ChannelItem = ({ channel, router, currentInstrument }: any) => (
-  <TouchableOpacity
-    style={styles.channelCardContainer}
-    onPress={() => router.push(`/channels/${channel.id}`)}
-  >
-    <Card style={styles.channelCard}>
-      <Card.Content style={styles.channelContent}>
-        <View 
-          style={[
-            styles.channelIconContainer,
-            { backgroundColor: `${currentInstrument?.color}30` || '#7F3DFF30' }
-          ]}
-        >
-          <Ionicons 
-            name={(channel.icon || 'chatbubbles') as any} 
-            size={24} 
-            color={currentInstrument?.color || '#7F3DFF'} 
-          />
-        </View>
-        
+// 型定義
+interface Tag {
+  id: string;
+  name: string;
+  color?: string;
+}
+
+// Channel型を拡張
+interface ExtendedChannel extends Channel {
+  threadCount?: number;
+  lastActivity?: Date;
+  createdAt?: Date;
+  createdBy?: string;
+  creatorName?: string;
+  creatorAvatar?: string;
+  isFavorite?: boolean;
+}
+
+// チャンネルカードコンポーネント
+const ChannelItemCard = ({ channel, onPress }: { channel: ExtendedChannel, onPress: () => void }) => {
+  const theme = getThemeForCategory(channel.category);
+  
+  return (
+    <Card style={styles.channelCard} onPress={onPress}>
+      <Card.Content style={styles.channelCardContent}>
         <View style={styles.channelInfo}>
-          <Text style={styles.channelName}>{channel.name}</Text>
-          <Text style={styles.channelDescription} numberOfLines={2}>
-            {channel.description}
-          </Text>
-          <View style={styles.channelFooter}>
-            <View style={styles.channelStat}>
-              <Ionicons name="people-outline" size={12} color="#AAAAAA" />
-              <Text style={styles.channelMembers}>{channel.members}人</Text>
+          {channel.imageUrl ? (
+            <Image source={{ uri: channel.imageUrl }} style={styles.channelImage} />
+          ) : (
+            <View style={[styles.channelImagePlaceholder, { backgroundColor: MUSIC_THEMES[theme].primary[0] }]}>
+              <Ionicons name="musical-notes" size={24} color="#FFFFFF" />
             </View>
-            <View style={styles.channelStat}>
-              <Ionicons name="chatbubbles-outline" size={12} color="#AAAAAA" />
-              <Text style={styles.channelMembers}>
-                {channel.threads?.length || 0}スレッド
+          )}
+          <View style={styles.channelTextInfo}>
+            <Text style={styles.channelName}>{channel.name}</Text>
+            {channel.description && (
+              <Text numberOfLines={2} style={styles.channelDescription}>
+                {channel.description}
               </Text>
+            )}
+            <View style={styles.channelMeta}>
+              <View style={styles.channelMetaItem}>
+                <Ionicons name="people" size={14} color="#FFFFFF" />
+                <Text style={styles.channelMetaText}>{channel.memberCount || 0} メンバー</Text>
+              </View>
+              {channel.category && (
+                <View style={styles.channelMetaItem}>
+                  <Ionicons name="musical-note" size={14} color="#FFFFFF" />
+                  <Text style={styles.channelMetaText}>{channel.category}</Text>
+                </View>
+              )}
             </View>
           </View>
         </View>
       </Card.Content>
     </Card>
-  </TouchableOpacity>
+  );
+};
+
+// パンくずリスト用コンポーネント
+const Breadcrumb = ({ navigateHome }: { navigateHome: () => void }) => (
+  <View style={styles.breadcrumbContainer}>
+    <View style={[styles.breadcrumbItem, styles.breadcrumbActive]}>
+      <Ionicons name="home-outline" size={16} color="#fff" />
+      <Text style={[styles.breadcrumbText, styles.breadcrumbActiveText]}>HOME</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.6)" />
+    <View style={styles.breadcrumbItem}>
+      <Text style={styles.breadcrumbText}>チャンネル一覧</Text>
+    </View>
+  </View>
 );
 
-export default function ChannelsScreen() {
+// チャンネル一覧画面
+export default function ChannelListScreen() {
   const router = useRouter();
-  const { userState, canCreateChannel } = useUser();
-  const { channels, getChannelsByCategory } = useData();
-  const { selectedCategories } = userState;
+  const navigation = useNavigation();
+  const { userState, toggleCategory, getCategoryThemeColor } = useUser();
+  const { isMenuOpen, openMenu } = useSideMenu();
+  const dataContext = useData(); // DataContextを取得
+  
+  // 状態管理
+  const [channels, setChannels] = useState<ExtendedChannel[]>([]);
+  const [filteredChannels, setFilteredChannels] = useState<ExtendedChannel[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  // 作成制限のメッセージ表示の状態
-  const [showLimitMessage, setShowLimitMessage] = useState(false);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [currentCategory, setCurrentCategory] = useState<string>(userState.selectedCategories[0] || 'flute');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   
-  // 選択されている楽器カテゴリー（最初の1つを使用）
-  const activeCategory = selectedCategories.length > 0 ? selectedCategories[0] : 'flute';
+  // アニメーション用のスクロール値
+  const scrollY = useSharedValue(0);
+
+  // 現在のテーマカラーを取得
+  const themeColor = getCategoryThemeColor();
   
-  // 現在の楽器カテゴリー情報
-  const currentInstrument = INSTRUMENT_CATEGORIES.find(cat => cat.id === activeCategory);
+  // 右スワイプで戻るための処理を追加
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // 右スワイプを検出（x方向の移動が20以上、y方向の移動が20未満）
+        return gestureState.dx > 20 && Math.abs(gestureState.dy) < 20;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // 右へのスワイプが50px以上なら前の画面に戻る
+        if (gestureState.dx > 50) {
+          router.back();
+        }
+      },
+    })
+  ).current;
   
-  // 現在のカテゴリーのチャンネル一覧
-  const categoryChannels = getChannelsByCategory(activeCategory) || [];
+  // 初回ロード時にデータを取得
+  useEffect(() => {
+    console.log(`ページ遷移 => app/channels/index.tsx [チャンネル一覧画面]`);
+    loadInitialData();
+    loadTags();
+  }, []);
   
+  // カテゴリー変更時にチャンネルをフィルタリング
+  useEffect(() => {
+    filterChannelsByCategory();
+  }, [currentCategory, channels]);
+  
+  // 選択されたタグまたは検索クエリが変更されたときにフィルタリング
+  useEffect(() => {
+    if (channels.length > 0) {
+      const filtered = filterChannelsByTagsAndSearch(channels, selectedTags, searchQuery);
+      setFilteredChannels(filtered);
+    }
+  }, [selectedTags, searchQuery, channels]);
+
+  // カテゴリーが変更されたときに現在のカテゴリーを更新
+  useEffect(() => {
+    if (userState.selectedCategories[0] !== currentCategory) {
+      setCurrentCategory(userState.selectedCategories[0]);
+    }
+  }, [userState.selectedCategories]);
+  
+  // 初期データの読み込み
+  const loadInitialData = async () => {
+    setIsLoading(true);
+    try {
+      // Firebaseからチャンネル一覧を取得
+      const channelsRef = collection(db, 'channels');
+      const q = query(
+        channelsRef,
+        orderBy('lastActivity', 'desc'),
+        limit(50)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        console.log('チャンネルが見つかりません');
+        fallbackToMockData();
+        return;
+      }
+      
+      const channelsData: ExtendedChannel[] = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        
+        // FirestoreのタイムスタンプをDateオブジェクトに変換
+        const createdAt = data.createdAt ? new Date(data.createdAt.seconds * 1000) : undefined;
+        const lastActivity = data.lastActivity ? new Date(data.lastActivity.seconds * 1000) : undefined;
+        
+        channelsData.push({
+          id: doc.id,
+          name: data.name,
+          description: data.description,
+          category: data.category,
+          imageUrl: data.imageUrl,
+          memberCount: data.memberCount || 0,
+          threadCount: data.threadCount || 0,
+          tags: data.tags || [],
+          createdAt,
+          lastActivity,
+          createdBy: data.createdBy,
+          creatorName: data.creatorName,
+          creatorAvatar: data.creatorAvatar,
+          isFavorite: false, // お気に入り状態は別途管理
+        });
+      });
+      
+      setChannels(channelsData);
+      filterChannelsByCategory();
+    } catch (error) {
+      console.error('チャンネル一覧の取得に失敗しました', error);
+      fallbackToMockData();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // カテゴリーによるフィルタリング
+  const filterChannelsByCategory = () => {
+    if (!channels.length) return;
+    
+    // 現在のカテゴリーに基づいてチャンネルをフィルタリング
+    const filtered = channels.filter(channel => 
+      channel.category === currentCategory || channel.category === 'general'
+    );
+    
+    // フィルタリングしたチャンネルをさらにタグと検索クエリでフィルタリング
+    const finalFiltered = filterChannelsByTagsAndSearch(filtered, selectedTags, searchQuery);
+    setFilteredChannels(finalFiltered);
+  };
+  
+  // タグとテキスト検索によるフィルタリング
+  const filterChannelsByTagsAndSearch = (channels: ExtendedChannel[], tags: string[], query: string) => {
+    let filtered = [...channels];
+    
+    // タグによるフィルタリング
+    if (tags.length > 0) {
+      filtered = filtered.filter(channel => 
+        channel.tags && channel.tags.some((tag: string) => tags.includes(tag))
+      );
+    }
+    
+    // 検索クエリによるフィルタリング
+    if (query.trim() !== '') {
+      const lowerQuery = query.toLowerCase();
+      filtered = filtered.filter(
+        channel => 
+          channel.name.toLowerCase().includes(lowerQuery) || 
+          (channel.description && channel.description.toLowerCase().includes(lowerQuery))
+      );
+    }
+    
+    return filtered;
+  };
+
+  // モックデータにフォールバック
+  const fallbackToMockData = (category = currentCategory) => {
+    // ... existing code ...
+  };
+
+  // タグのロード
+  const loadTags = async () => {
+    // ... existing code ...
+  };
+
+  // タグ選択の切り替え
+  const toggleTagSelection = (tag: string) => {
+    const newSelectedTags = selectedTags.includes(tag)
+      ? selectedTags.filter(t => t !== tag)
+      : [...selectedTags, tag];
+    
+    setSelectedTags(newSelectedTags);
+    const filtered = filterChannelsByTagsAndSearch(
+      channels.filter(channel => channel.category === currentCategory), 
+      newSelectedTags, 
+      searchQuery
+    );
+    setFilteredChannels(filtered);
+  };
+
+  // 検索クエリの更新
   const onChangeSearch = (query: string) => setSearchQuery(query);
 
-  // チャンネル作成ページへ移動
-  const handleCreateChannel = () => {
-    if (canCreateChannel()) {
-      router.push('/channels/create');
-    } else {
-      // 作成上限に達している場合はメッセージを表示
-      setShowLimitMessage(true);
-      
-      // 3秒後にメッセージを非表示に
-      setTimeout(() => {
-        setShowLimitMessage(false);
-      }, 3000);
-    }
+  // 検索の実行
+  const handleSearch = () => {
+    const filtered = filterChannelsByTagsAndSearch(
+      channels.filter(channel => channel.category === currentCategory), 
+      selectedTags, 
+      searchQuery
+    );
+    setFilteredChannels(filtered);
+  };
+
+  // カテゴリー選択の切り替え
+  const handleCategoryChange = (category: string) => {
+    setCurrentCategory(category);
+    setShowCategoryDropdown(false);
+    // ユーザーの選択カテゴリーも更新
+    toggleCategory(category);
+  };
+  
+  // カテゴリー選択のトグル
+  const toggleCategoryDropdown = () => {
+    setShowCategoryDropdown(!showCategoryDropdown);
+  };
+
+  // リフレッシュ処理
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    loadInitialData().then(() => setIsRefreshing(false));
+  }, []);
+
+  // チャンネル詳細画面への遷移
+  const navigateToChannelDetail = (channelId: string) => {
+    console.log(`ページ遷移 => チャンネル詳細/スレッド一覧: ${channelId}`);
+    // 型エラーを避けるため、string型に変換
+    router.push({
+      pathname: "/channels/[id]" as any,
+      params: { id: channelId }
+    });
+  };
+
+  // チャンネル作成画面への遷移
+  const navigateToChannelCreate = () => {
+    console.log('チャンネル作成ページへ遷移');
+    // 型エラーを避けるため、any型にキャスト
+    router.push("/channels/create" as any);
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
-      
-      {/* ブレッドクラムナビゲーション */}
-      <BreadcrumbNavigation 
-        categoryName={currentInstrument?.name || 'フルート'} 
-      />
-      
-      {/* 検索バーとチャンネル作成ボタン */}
-      <View style={styles.searchContainer}>
-        <Searchbar
-          placeholder="チャンネルを検索"
-          onChangeText={onChangeSearch}
-          value={searchQuery}
-          style={styles.searchBar}
-          iconColor="#7F3DFF"
-          inputStyle={{ color: '#FFFFFF', fontSize: 14 }}
-          placeholderTextColor="#888888"
-        />
+    <MusicGradientBackground 
+      theme={getThemeForCategory(currentCategory)}
+      opacity={0.98}
+    >
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
         
-        <TouchableOpacity 
-          style={[styles.createChannelButton, { backgroundColor: currentInstrument?.color || '#7F3DFF' }]}
-          onPress={handleCreateChannel}
-        >
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-      
-      {/* チャンネル作成制限メッセージ */}
-      {showLimitMessage && (
-        <View style={styles.limitMessageContainer}>
-          <Text style={styles.limitMessageText}>
-            作成できるチャンネルは3つまでです
-          </Text>
-        </View>
-      )}
-      
-      {/* チャンネル一覧 */}
-      <FlatList
-        data={categoryChannels}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ChannelItem 
-            channel={item} 
-            router={router} 
-            currentInstrument={currentInstrument}
+        {/* ヘッダー */}
+        <View style={styles.header}>
+          <IconButton
+            icon="menu"
+            iconColor="#fff"
+            size={24}
+            onPress={openMenu}
           />
-        )}
-        contentContainerStyle={styles.channelsList}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubbles-outline" size={64} color="#444444" />
-            <Text style={styles.emptyText}>チャンネルが見つかりません</Text>
+          <Text style={styles.headerTitle}>チャンネル一覧</Text>
+          <IconButton
+            icon="bell-outline"
+            iconColor="#fff"
+            size={24}
+            onPress={() => console.log('通知ボタンが押されました')}
+          />
+        </View>
+        
+        {/* パンくずリスト */}
+        <Breadcrumb navigateHome={() => router.push('/')} />
+        
+        {/* 検索バー */}
+        <View style={styles.searchContainer}>
+          <Searchbar
+            placeholder="チャンネルを検索"
+            onChangeText={onChangeSearch}
+            onSubmitEditing={handleSearch}
+            value={searchQuery}
+            style={styles.searchBar}
+            iconColor="#666"
+            placeholderTextColor="#666"
+          />
+        </View>
+        
+        {/* カテゴリー選択 */}
+        <View style={styles.categorySelector}>
+          <TouchableOpacity
+            style={styles.categoryDropdownButton}
+            onPress={toggleCategoryDropdown}
+          >
+            <Text style={styles.categoryButtonText}>
+              {INSTRUMENT_CATEGORIES.find(cat => cat.id === currentCategory)?.name || 'カテゴリー選択'}
+            </Text>
+            <Ionicons
+              name={showCategoryDropdown ? "chevron-up" : "chevron-down"}
+              size={18}
+              color="#fff"
+            />
+          </TouchableOpacity>
+          
+          {showCategoryDropdown && (
+            <View style={styles.categoryDropdown}>
+              {INSTRUMENT_CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.categoryDropdownItem,
+                    currentCategory === category.id && styles.selectedCategoryItem
+                  ]}
+                  onPress={() => handleCategoryChange(category.id)}
+                >
+                  <Ionicons
+                    name="musical-notes"
+                    size={18}
+                    color={currentCategory === category.id ? themeColor : "#fff"}
+                  />
+                  <Text style={[
+                    styles.categoryDropdownItemText,
+                    currentCategory === category.id && { color: themeColor }
+                  ]}>
+                    {category.name}
+                  </Text>
+                  {currentCategory === category.id && (
+                    <Ionicons name="checkmark" size={18} color={themeColor} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+        
+        {/* チャンネル一覧 */}
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={themeColor} />
+            <Text style={styles.loadingText}>チャンネル情報を読み込み中...</Text>
           </View>
-        }
-      />
-      
-      {/* チャンネル作成FAB */}
-      <FAB
-        style={[styles.fab, { backgroundColor: currentInstrument?.color || '#7F3DFF' }]}
-        icon="plus"
-        onPress={handleCreateChannel}
-      />
-      
-      {/* 五度圏メニューのFAB */}
-      <MusicFAB />
-    </SafeAreaView>
+        ) : (
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollViewContent}
+            refreshControl={
+              <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={themeColor} />
+            }
+            {...panResponder.panHandlers} // ScrollViewにPanResponderを適用
+          >
+            {/* タグフィルター */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagsContainer}>
+              {INSTRUMENT_TAGS.map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  style={[
+                    styles.tagButton,
+                    selectedTags.includes(tag) && { backgroundColor: themeColor }
+                  ]}
+                  onPress={() => toggleTagSelection(tag)}
+                >
+                  <Text
+                    style={[
+                      styles.tagText,
+                      selectedTags.includes(tag) && styles.selectedTagText
+                    ]}
+                  >
+                    {tag}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            
+            {/* チャンネル一覧 */}
+            {filteredChannels.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="musical-notes-outline" size={80} color="#fff" style={{opacity: 0.7, marginBottom: 16}} />
+                <Text style={styles.emptyTitle}>チャンネルがありません</Text>
+                <Text style={styles.emptyText}>
+                  新しいチャンネルを作成するか、検索条件を変更してください。
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.channelsContainer}>
+                {filteredChannels.map(channel => (
+                  <ChannelItemCard 
+                    key={channel.id}
+                    channel={channel}
+                    onPress={() => navigateToChannelDetail(channel.id)}
+                  />
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        )}
+        
+        {/* チャンネル作成FAB */}
+        <FAB
+          icon="plus"
+          style={[styles.fab, { backgroundColor: themeColor }]}
+          onPress={navigateToChannelCreate}
+          label="新規チャンネル"
+          color="#fff"
+        />
+
+        {/* 音楽波形アニメーション */}
+        <MusicWaveAnimation />
+      </SafeAreaView>
+    </MusicGradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
   },
-  breadcrumbContainer: {
-    marginBottom: 10,
-  },
-  breadcrumbGradient: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
+    height: 60,
   },
-  breadcrumbItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  breadcrumbText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    marginLeft: 4,
-  },
-  breadcrumbSeparatorContainer: {
-    marginHorizontal: 8,
-  },
-  breadcrumbActiveItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  breadcrumbActiveText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  headerTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
-    marginLeft: 4,
+    color: '#fff',
   },
   searchContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 8,
   },
   searchBar: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 12,
     elevation: 0,
-    height: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 8,
+  },
+  scrollView: {
     flex: 1,
   },
-  createChannelButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
+  scrollViewContent: {
+    paddingBottom: 100,
   },
-  channelsList: {
+  tagsContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  tagButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 20,
+    marginRight: 8,
+  },
+  selectedTagButton: {
+    backgroundColor: '#6200ee',
+  },
+  tagText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  selectedTagText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  channelsContainer: {
     paddingHorizontal: 16,
   },
-  channelCardContainer: {
-    marginBottom: 10,
-  },
-  channelCard: {
-    backgroundColor: '#1E1E1E',
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 0,
-    elevation: 1,
-  },
-  channelContent: {
-    padding: 14,
-  },
-  channelIconContainer: {
-    width: 42,
-    height: 42,
-    borderRadius: 8,
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  channelInfo: {
-    width: '100%',
-  },
-  channelName: {
+  loadingText: {
+    marginTop: 8,
+    color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  channelDescription: {
-    fontSize: 14,
-    color: '#CCCCCC',
-    marginBottom: 8,
-    lineHeight: 18,
-  },
-  channelFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  channelStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  channelMembers: {
-    fontSize: 12,
-    color: '#AAAAAA',
-    marginLeft: 4,
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
+    paddingTop: 60,
     alignItems: 'center',
-    padding: 40,
+    paddingHorizontal: 32,
+  },
+  emptyImage: {
+    width: 200,
+    height: 200,
+    resizeMode: 'contain',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 8,
   },
   emptyText: {
-    color: '#AAAAAA',
-    marginTop: 16,
     fontSize: 16,
-  },
-  limitMessageContainer: {
-    backgroundColor: 'rgba(255, 87, 87, 0.9)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginHorizontal: 16,
-    marginBottom: 10,
-    borderRadius: 8,
-  },
-  limitMessageText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
   },
   fab: {
     position: 'absolute',
     margin: 16,
     right: 0,
-    bottom: 80,
-    borderRadius: 28,
+    bottom: 16,
+    backgroundColor: '#6200ee',
+  },
+  channelCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  channelCardContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  channelInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  channelImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  channelImagePlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  channelTextInfo: {
+    flex: 1,
+  },
+  channelName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  channelDescription: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 12,
+  },
+  channelMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  channelMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  channelMetaText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginLeft: 4,
+  },
+  breadcrumbContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  breadcrumbItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  breadcrumbText: {
+    fontSize: 14,
+    color: '#fff',
+    marginLeft: 4,
+  },
+  breadcrumbActive: {
+    opacity: 0.8,
+  },
+  breadcrumbActiveText: {
+    fontWeight: 'bold',
+  },
+  categorySelector: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+    position: 'relative',
+    zIndex: 10,
+  },
+  categoryDropdownButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  categoryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  categoryDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(30, 30, 40, 0.95)',
+    borderRadius: 8,
+    marginTop: 4,
+    paddingVertical: 4,
+    maxHeight: 300,
+    overflow: 'hidden',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  categoryDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  selectedCategoryItem: {
+    backgroundColor: 'rgba(98, 0, 238, 0.1)',
+  },
+  categoryDropdownItemText: {
+    color: '#fff',
+    fontSize: 16,
+    marginLeft: 8,
+    flex: 1,
+  },
+  selectedCategoryItemText: {
+    color: '#6200ee',
+    fontWeight: '600',
   },
 }); 

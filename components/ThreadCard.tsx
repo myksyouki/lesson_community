@@ -89,12 +89,28 @@ export default function ThreadCard({
   
   // 日付をフォーマット
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('ja-JP', { 
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-    }).format(date);
+    try {
+      // 日付が "○時間前", "○分前" などの形式の場合はそのまま返す
+      if (dateString.match(/[0-9]+[時分日]前/) || dateString.includes('前')) {
+        return dateString;
+      }
+      
+      const date = new Date(dateString);
+      
+      // 無効な日付かどうかチェック
+      if (isNaN(date.getTime())) {
+        return '不明な日付';
+      }
+      
+      return new Intl.DateTimeFormat('ja-JP', { 
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+      }).format(date);
+    } catch (error) {
+      console.error('日付フォーマットエラー:', error, dateString);
+      return '不明な日付';
+    }
   };
   
   // いいねのハンドリング
@@ -155,7 +171,10 @@ export default function ThreadCard({
     <Animated.View style={animatedCardStyle}>
       <TouchableOpacity 
         style={styles.container}
-        onPress={() => router.push(`/threads/${channelId}/${id}`)}
+        onPress={() => {
+          console.log(`ページ遷移 => app/threads/${channelId}/${id} [スレッド詳細画面]`);
+          router.push(`/threads/${channelId}/${id}`);
+        }}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         activeOpacity={0.9}

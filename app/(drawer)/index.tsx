@@ -1,6 +1,6 @@
 // app/index.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, FlatList, RefreshControl, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, FlatList, RefreshControl, Dimensions, Platform, Alert } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { Card, Searchbar, Button, Chip, useTheme, ActivityIndicator, FAB, IconButton } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,10 +9,11 @@ import { useUser } from '../../contexts/UserContext';
 import { useData } from '../../contexts/DataContext';
 import { StatusBar } from 'expo-status-bar';
 import MusicFAB from '../../components/MusicFAB';
-import { DrawerActions, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import ChannelCard from '../../components/ChannelCard';
 import MusicWaveAnimation from '../../components/MusicWaveAnimation';
 import MusicGradientBackground from '../../components/MusicGradientBackground';
+import { useSideMenu } from '../../contexts/SideMenuContext';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -21,7 +22,8 @@ import Animated, {
   withRepeat,
   withDelay,
 } from 'react-native-reanimated';
-import firestore from '@react-native-firebase/firestore';
+import { db } from '../../firebase/config';
+import { collection, query, orderBy, getDocs, where, addDoc, serverTimestamp, limit } from 'firebase/firestore';
 
 // チャンネルデータ（楽器カテゴリーごと）
 const CHANNELS_BY_CATEGORY = {
@@ -108,9 +110,12 @@ interface ExtendedChannel {
   category: string;
   members: number;
   threads: any[];
+  threadCount?: number;
+  memberCount?: number;
   icon?: string;
   unreadCount?: number;
   tags?: string[];
+  imageUrl?: string;
 }
 
 // タグの型定義
@@ -144,6 +149,9 @@ export default function HomeScreen() {
   const [tags, setTags] = useState<Tag[]>(DEFAULT_TAGS);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   
+  // サイドメニューのコンテキストを使用
+  const { openMenu } = useSideMenu();
+  
   // アニメーション用の値
   const headerOpacity = useSharedValue(0);
   const headerTranslateY = useSharedValue(-50);
@@ -152,8 +160,9 @@ export default function HomeScreen() {
   // おすすめチャンネルのインデックス
   const recommendedIndex = 0; // 例として最初のチャンネルをおすすめとする
 
-  // データロード用関数
+  // ページ読み込み時にファイル名をコンソールに表示
   useEffect(() => {
+    console.log(`ページ遷移 => app/(drawer)/index.tsx [ホーム画面]`);
     loadInitialData();
     loadTags();
     
@@ -171,17 +180,26 @@ export default function HomeScreen() {
   // Firebaseからタグデータを取得
   const loadTags = async () => {
     try {
-      // Firebaseが利用可能な場合、タグデータを取得
-      // 注: 実際の実装ではfirestore()を使用
-      // const tagsSnapshot = await firestore().collection('tags').get();
-      // const tagsData = tagsSnapshot.docs.map(doc => ({
-      //   id: doc.id,
-      //   ...doc.data()
-      // }));
-      // setTags(tagsData);
+      // Firebaseからタグデータを取得
+      const tagsQuery = query(
+        collection(db, 'tags'),
+        orderBy('count', 'desc')
+      );
       
-      // 現在はモックデータを使用
-      setTags(DEFAULT_TAGS);
+      const tagsSnapshot = await getDocs(tagsQuery);
+      
+      if (!tagsSnapshot.empty) {
+        const tagsData = tagsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          name: doc.data().name,
+          color: doc.data().color,
+          count: doc.data().count || 0
+        }));
+        setTags(tagsData);
+      } else {
+        // タグがない場合はデフォルトのタグを表示
+        setTags(DEFAULT_TAGS);
+      }
     } catch (error) {
       console.error('Error loading tags:', error);
       // エラーが発生した場合はデフォルトタグを表示
@@ -189,36 +207,138 @@ export default function HomeScreen() {
     }
   };
 
-  const loadInitialData = () => {
-    const currentCategory = userState.selectedCategories[0] || 'flute';
-    const channelsForCategory = CHANNELS_BY_CATEGORY[currentCategory as keyof typeof CHANNELS_BY_CATEGORY] || [];
+  const loadInitialData = async () => {
+    setLoading(true);
+    try {
+      // 選択カテゴリ（なければデフォルト）
+      const currentCategory = userState.selectedCategories[0] || 'general';
+
+      // Firebaseからチャンネルデータを取得
+      const channelsQuery = query(
+        collection(db, 'channels'),
+        where('category', '==', currentCategory),
+        orderBy('lastActivity', 'desc'),
+        limit(10)
+      );
+      
+      const channelsSnapshot = await getDocs(channelsQuery);
+      
+      if (!channelsSnapshot.empty) {
+        const channelsData = channelsSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            name: data.name,
+            description: data.description || '',
+            category: data.category,
+            imageUrl: data.imageUrl,
+            memberCount: data.memberCount || 0,
+            members: data.memberCount || 0, // members属性に同じ値を入れる
+            threadCount: data.threadCount || 0,
+            tags: data.tags || [],
+            threads: [],
+            icon: 'musical-notes'
+          } as ExtendedChannel;
+        });
+        
+        setChannels(channelsData);
+      } else {
+        // データがない場合はモックデータを使用
+        fallbackToMockData(currentCategory);
+      }
+    } catch (error) {
+      console.error('Error loading channels:', error);
+      // エラーの場合はモックデータを使用
+      fallbackToMockData();
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // モックデータにフォールバックする関数
+  const fallbackToMockData = (category = 'flute') => {
+    const channelsForCategory = CHANNELS_BY_CATEGORY[category as keyof typeof CHANNELS_BY_CATEGORY] || CHANNELS_BY_CATEGORY.flute;
     
     // チャンネルデータを整形
     const formattedChannels = channelsForCategory.map(channel => ({
       ...channel,
-      category: currentCategory,
+      category: category,
       threads: [],
     }));
     
     setChannels(formattedChannels);
-    setLoading(false);
   };
   
   // 選択されたタグに基づいてチャンネルをフィルタリング
-  const loadChannelsByTags = () => {
+  const loadChannelsByTags = async () => {
     if (selectedTags.length === 0) {
       loadInitialData();
       return;
     }
     
+    setLoading(true);
+    try {
+      // Firebaseからタグでフィルタリングしたチャンネルを取得
+      // NOTE: Firebaseは配列に対する複数条件のクエリが直接できないため、
+      // in句を使って一つのタグに一致するドキュメントを取得
+      // クライアント側でさらにフィルタリング
+      const currentCategory = userState.selectedCategories[0] || 'general';
+      
+      const channelsQuery = query(
+        collection(db, 'channels'),
+        where('category', '==', currentCategory),
+        where('tags', 'array-contains-any', selectedTags),
+        orderBy('lastActivity', 'desc')
+      );
+      
+      const channelsSnapshot = await getDocs(channelsQuery);
+      
+      if (!channelsSnapshot.empty) {
+        const channelsData = channelsSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            name: data.name,
+            description: data.description || '',
+            category: data.category,
+            imageUrl: data.imageUrl,
+            memberCount: data.memberCount || 0,
+            members: data.memberCount || 0, // members属性に同じ値を入れる
+            threadCount: data.threadCount || 0,
+            tags: data.tags || [],
+            threads: [],
+            icon: 'musical-notes'
+          } as ExtendedChannel;
+        });
+        
+        setChannels(channelsData);
+      } else {
+        // データがない場合は空の配列を設定
+        setChannels([]);
+      }
+    } catch (error) {
+      console.error('Error filtering channels by tags:', error);
+      // エラー時はモックデータをフィルタリング
+      filterMockChannelsByTags();
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // モックデータに基づくタグフィルタリング (フォールバック用)
+  const filterMockChannelsByTags = () => {
     const currentCategory = userState.selectedCategories[0] || 'flute';
     const allChannels = CHANNELS_BY_CATEGORY[currentCategory as keyof typeof CHANNELS_BY_CATEGORY] || [];
     
+    // モックチャンネルデータのtags属性がない場合、空の配列を設定
+    const channelsWithTags = allChannels.map(channel => ({
+      ...channel,
+      tags: channel.tags || []
+    }));
+    
     // 選択されたタグに一致するチャンネルをフィルタリング
-    const filteredChannels = allChannels.filter(channel => {
-      if (!channel.tags) return false;
-      // channelのタグに選択されたタグが1つでも含まれていれば表示
-      return selectedTags.some(tag => channel.tags?.includes(tag));
+    const filteredChannels = channelsWithTags.filter(channel => {
+      return selectedTags.some(tag => channel.tags.includes(tag));
     });
     
     // チャンネルデータを整形
@@ -230,7 +350,7 @@ export default function HomeScreen() {
     
     setChannels(formattedChannels);
   };
-  
+
   // タグの選択/解除を処理
   const toggleTag = (tagId: string) => {
     setSelectedTags(prev => {
@@ -246,17 +366,17 @@ export default function HomeScreen() {
   const createTag = async (name: string, color: string) => {
     try {
       // Firebaseに新しいタグを追加
-      // const newTagRef = await firestore().collection('tags').add({
-      //   name,
-      //   color,
-      //   count: 0,
-      //   createdAt: firestore.FieldValue.serverTimestamp(),
-      //   createdBy: userState.uid
-      // });
+      const newTagRef = await addDoc(collection(db, 'tags'), {
+        name,
+        color,
+        count: 0,
+        createdAt: serverTimestamp(),
+        createdBy: userState.username || 'anonymous'
+      });
       
       // UIを更新
       const newTag = {
-        id: `tag-${Date.now()}`, // 実際の実装ではnewTagRef.idを使用
+        id: newTagRef.id,
         name,
         color,
         count: 0
@@ -265,20 +385,23 @@ export default function HomeScreen() {
       setTags(prev => [...prev, newTag]);
       
       // 作成したタグを選択
-      setSelectedTags(prev => [...prev, newTag.id]);
+      setSelectedTags(prev => [...prev, newTag.name]);
       
     } catch (error) {
       console.error('Error creating tag:', error);
+      Alert.alert('エラー', 'タグの作成に失敗しました');
     }
   };
   
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadInitialData();
-    loadTags();
-    setTimeout(() => {
+    
+    Promise.all([
+      loadInitialData(),
+      loadTags()
+    ]).finally(() => {
       setRefreshing(false);
-    }, 1000);
+    });
   }, []);
 
   // タグリストのアニメーションスタイル
@@ -305,6 +428,7 @@ export default function HomeScreen() {
   };
   
   const navigateToChannelList = () => {
+    console.log(`ページ遷移 => app/channels/index.tsx [チャンネル一覧画面]`);
     router.push('/channels');
   };
 
@@ -364,20 +488,19 @@ export default function HomeScreen() {
         >
           {/* ヘッダー */}
           <Animated.View style={[styles.header, headerAnimatedStyle]}>
-            <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
-              <Ionicons name="menu" size={28} color="#FFFFFF" />
-            </TouchableOpacity>
-            
-            <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>ホーム</Text>
-            </View>
-            
-            <TouchableOpacity onPress={() => router.push('/profile')}>
-              <Image
-                source={{ uri: userState.avatarUrl || 'https://via.placeholder.com/40' }}
-                style={styles.avatar}
-              />
-            </TouchableOpacity>
+            <IconButton
+              icon="menu"
+              iconColor="#fff"
+              size={24}
+              onPress={openMenu}
+            />
+            <Text style={styles.headerTitle}>ホーム</Text>
+            <IconButton
+              icon="bell-outline"
+              iconColor="#fff"
+              size={24}
+              onPress={() => console.log('通知ボタンが押されました')}
+            />
           </Animated.View>
           
           {/* 検索バー */}
@@ -399,7 +522,7 @@ export default function HomeScreen() {
           <View style={styles.tagContainer}>
             <View style={styles.tagHeader}>
               <Text style={styles.sectionTitle}>タグリスト</Text>
-              <TouchableOpacity onPress={() => router.push('/tags')}>
+              <TouchableOpacity onPress={() => router.push('/tags' as any)}>
                 <Text style={[styles.viewAllText, { color: currentInstrument.color }]}>管理</Text>
               </TouchableOpacity>
             </View>
@@ -437,7 +560,7 @@ export default function HomeScreen() {
                 
                 <TouchableOpacity
                   style={[styles.tagItem, styles.createTagItem]}
-                  onPress={() => router.push('/tags/create')}
+                  onPress={() => router.push('/tags/create' as any)}
                 >
                   <Ionicons name="add" size={18} color="#FFFFFF" />
                   <Text style={styles.createTagText}>新規タグ</Text>
@@ -523,14 +646,10 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
+    height: 60,
   },
   headerTitle: {
     fontSize: 20,

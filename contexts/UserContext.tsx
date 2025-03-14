@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, ReactNode } from 'react';
+import { MUSIC_THEMES, getCategoryTheme } from '../theme/musicThemes';
 
 // ユーザーの状態の型定義
 interface UserState {
@@ -28,6 +29,7 @@ interface UserContextType {
   addCreatedChannel: (channelId: string) => boolean;
   removeCreatedChannel: (channelId: string) => void;
   canCreateChannel: () => boolean;
+  getCategoryThemeColor: () => string;
 }
 
 // デフォルト値
@@ -145,6 +147,15 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return userState.createdChannels.length < 3;
   };
 
+  const getCategoryThemeColor = () => {
+    // 選択されているカテゴリー（最初のものを使用）
+    const selectedCategory = userState.selectedCategories[0] || 'default';
+    // カテゴリーに対応するテーマを取得
+    const themeKey = getCategoryTheme(selectedCategory);
+    // テーマからアクセントカラーを返す
+    return MUSIC_THEMES[themeKey].accent;
+  };
+
   return (
     <UserContext.Provider
       value={{
@@ -159,6 +170,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         addCreatedChannel,
         removeCreatedChannel,
         canCreateChannel,
+        getCategoryThemeColor,
       }}
     >
       {children}

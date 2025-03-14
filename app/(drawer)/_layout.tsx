@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Animated, PanResponder, Dimensions, TouchableWithoutFeedback } from 'react-native';
-import { Drawer } from 'expo-router/drawer';
 import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '../../contexts/UserContext';
 import SideMenu from '../../components/SideMenu';
 import { INSTRUMENT_COLORS } from '../../constants/Colors';
+import { SideMenuProvider, useSideMenu } from '../../contexts/SideMenuContext';
 
 // 楽器カテゴリーの定義
 const INSTRUMENT_CATEGORIES = [
@@ -30,29 +30,25 @@ interface InstrumentCategory {
   icon: string;
 }
 
-export default function DrawerLayout() {
+function AppLayoutContent() {
   const { userState } = useUser();
   const { selectedCategories } = userState;
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isMenuExpanded, setIsMenuExpanded] = useState(false);
   const { width: screenWidth } = Dimensions.get('window');
+  
+  // サイドメニューコンテキストからフックを使用
+  const { 
+    isMenuOpen, 
+    isMenuExpanded, 
+    openMenu, 
+    closeMenu, 
+    setMenuExpanded 
+  } = useSideMenu();
   
   // 選択されている楽器カテゴリー（最初の1つを使用）
   const activeCategory = selectedCategories.length > 0 ? selectedCategories[0] : 'flute';
   
   // 現在の楽器カテゴリー情報
   const currentInstrument = INSTRUMENT_CATEGORIES.find((cat: InstrumentCategory) => cat.id === activeCategory);
-
-  // メニューを開く
-  const openMenu = () => {
-    setIsMenuOpen(true);
-  };
-
-  // メニューを閉じる
-  const closeMenu = () => {
-    setIsMenuExpanded(false);
-    setIsMenuOpen(false);
-  };
 
   // スワイプジェスチャーの設定
   const panResponder = useRef(
@@ -71,7 +67,7 @@ export default function DrawerLayout() {
           openMenu();
         } else if (gestureState.dx > 50 && isMenuOpen && !isMenuExpanded) {
           // さらに右スワイプでメニューを展開
-          setIsMenuExpanded(true);
+          setMenuExpanded(true);
         }
       },
       onPanResponderRelease: () => {
@@ -80,19 +76,6 @@ export default function DrawerLayout() {
     })
   ).current;
 
-  // カスタムヘッダー
-  const CustomHeader = ({ title }: { title: string }) => (
-    <View style={styles.headerContainer}>
-      <View style={styles.headerContent}>
-        <TouchableOpacity onPress={openMenu} style={styles.menuButton}>
-          <Ionicons name="menu" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        
-        <Text style={styles.headerTitle}>{title}</Text>
-      </View>
-    </View>
-  );
-
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
       {/* サイドメニュー */}
@@ -100,7 +83,7 @@ export default function DrawerLayout() {
         isOpen={isMenuOpen} 
         onClose={closeMenu} 
         isExpanded={isMenuExpanded}
-        onExpandChange={setIsMenuExpanded}
+        onExpandChange={setMenuExpanded}
       />
       
       {/* オーバーレイ（メニューが開いているときに表示） */}
@@ -121,26 +104,32 @@ export default function DrawerLayout() {
         <Stack.Screen 
           name="index" 
           options={{ 
-            headerShown: true,
-            header: () => <CustomHeader title="ホーム" />,
+            headerShown: false
           }} 
         />
         <Stack.Screen 
           name="profile" 
           options={{ 
-            headerShown: true,
-            header: () => <CustomHeader title="プロフィール" />,
+            headerShown: false
           }} 
         />
         <Stack.Screen 
           name="category/index" 
           options={{ 
-            headerShown: true,
-            header: () => <CustomHeader title="カテゴリー" />,
+            headerShown: false
           }} 
         />
       </Stack>
     </View>
+  );
+}
+
+// メインのAppLayoutコンポーネント
+export default function AppLayout() {
+  return (
+    <SideMenuProvider>
+      <AppLayoutContent />
+    </SideMenuProvider>
   );
 }
 

@@ -54,6 +54,8 @@ export default function InstrumentSelectorScreen({ isModal = false, onClose }: I
 
   // 初期アニメーション
   useEffect(() => {
+    console.log(`ページ遷移 => app/instrument-selector.tsx [楽器選択画面]`);
+    
     Animated.sequence([
       Animated.timing(fadeAnim, {
         toValue: 1,

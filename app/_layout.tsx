@@ -25,6 +25,7 @@ import Animated, {
   useSharedValue, 
   withTiming
 } from 'react-native-reanimated';
+import { SideMenuProvider } from '../contexts/SideMenuContext';
 
 // スプラッシュスクリーンを表示し続ける
 SplashScreen.preventAutoHideAsync();
@@ -260,67 +261,68 @@ function RootLayoutNav() {
           <UserProvider>
             <FirebaseProvider>
               <DataProvider>
-                {/* React Native Paperのプロバイダーを追加 */}
                 <PaperProvider theme={paperTheme}>
                   <NavigationThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
                     <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                    <AuthStateListener>
-                      <Stack 
-                        screenOptions={{ 
-                          headerShown: false,
-                          animation: 'fade_from_bottom',
-                          animationDuration: 300,
-                          gestureEnabled: true,
-                        }}
-                      >
-                        <Stack.Screen 
-                          name="login" 
-                          options={{ 
+                    <SideMenuProvider>
+                      <AuthStateListener>
+                        <Stack 
+                          screenOptions={{ 
                             headerShown: false,
-                            animation: 'fade',
-                            animationDuration: 400,
-                          }} 
-                        />
-                        <Stack.Screen 
-                          name="(tabs)" 
-                          options={{ 
-                            headerShown: false,
-                            animation: 'slide_from_right',
-                            animationDuration: 350,
-                          }} 
-                        />
-                        <Stack.Screen 
-                          name="(drawer)" 
-                          options={{ 
-                            headerShown: false,
-                            animation: 'slide_from_right',
-                            animationDuration: 350,
-                          }} 
-                        />
-                        <Stack.Screen 
-                          name="modal" 
-                          options={{ 
-                            presentation: 'modal',
-                            animation: 'slide_from_bottom',
-                            animationDuration: 400,
-                          }} 
-                        />
-                        <Stack.Screen 
-                          name="onboarding" 
-                          options={{ 
-                            animation: 'fade',
-                            animationDuration: 500,
-                          }} 
-                        />
-                        <Stack.Screen 
-                          name="instrument-selector" 
-                          options={{ 
-                            animation: 'fade_from_bottom', 
-                            animationDuration: 450,
-                          }} 
-                        />
-                      </Stack>
-                    </AuthStateListener>
+                            animation: 'fade_from_bottom',
+                            animationDuration: 300,
+                            gestureEnabled: true,
+                          }}
+                        >
+                          <Stack.Screen 
+                            name="login" 
+                            options={{ 
+                              headerShown: false,
+                              animation: 'fade',
+                              animationDuration: 400,
+                            }} 
+                          />
+                          <Stack.Screen 
+                            name="(tabs)" 
+                            options={{ 
+                              headerShown: false,
+                              animation: 'slide_from_right',
+                              animationDuration: 350,
+                            }} 
+                          />
+                          <Stack.Screen 
+                            name="(drawer)" 
+                            options={{ 
+                              headerShown: false,
+                              animation: 'slide_from_right',
+                              animationDuration: 350,
+                            }} 
+                          />
+                          <Stack.Screen 
+                            name="modal" 
+                            options={{ 
+                              presentation: 'modal',
+                              animation: 'slide_from_bottom',
+                              animationDuration: 400,
+                            }} 
+                          />
+                          <Stack.Screen 
+                            name="onboarding" 
+                            options={{ 
+                              animation: 'fade',
+                              animationDuration: 500,
+                            }} 
+                          />
+                          <Stack.Screen 
+                            name="instrument-selector" 
+                            options={{ 
+                              animation: 'fade_from_bottom', 
+                              animationDuration: 450,
+                            }} 
+                          />
+                        </Stack>
+                      </AuthStateListener>
+                    </SideMenuProvider>
                   </NavigationThemeProvider>
                 </PaperProvider>
               </DataProvider>
