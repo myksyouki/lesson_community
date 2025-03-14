@@ -264,17 +264,32 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!currentInstrument) return;
     
+    console.log(`Subscribing to HOT threads for instrument: ${currentInstrument.id}`);
     const unsubscribe = subscribeToHotThreads(currentInstrument.id, 5);
+    
     return () => {
+      console.log(`Unsubscribing from HOT threads for instrument: ${currentInstrument.id}`);
       unsubscribe();
     };
-  }, [currentInstrument]);
-
+  }, [currentInstrument?.id]); // idで明示的に依存関係を設定
+  
   // HOTスレッドを購読する関数
   const subscribeToHotThreads = (instrument: string, limit: number) => {
+    // 空の配列をセットして古いデータをクリア
+    setHotThreads([]);
+    
     return dataSubscribeToHotThreads(instrument, limit, (threads) => {
+      // さらにインストゥルメントでフィルタリング (念のため)
+      const filteredThreads = threads.filter(thread => {
+        // Threadの型定義にinstrumentがないため、any型として扱う
+        const threadAny = thread as any;
+        // threadにinstrumentプロパティがない場合はチャンネルのカテゴリーをチェック
+        const channelCategory = categoryChannels.find(c => c.id === thread.channelId)?.category;
+        return threadAny.instrument === instrument || channelCategory === instrument;
+      });
+      
       // チャンネル名を付加
-      const threadsWithChannelName = threads.map(thread => {
+      const threadsWithChannelName = filteredThreads.map(thread => {
         const channel = categoryChannels.find(c => c.id === thread.channelId);
         return {
           ...thread,

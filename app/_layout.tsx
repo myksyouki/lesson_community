@@ -11,8 +11,20 @@ import { DataProvider } from '@/contexts/DataContext';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from '../hooks/useColorScheme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Text, View } from 'react-native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import { Text, View, Dimensions } from 'react-native';
+import Animated, { 
+  Easing,
+  SlideInRight, 
+  SlideOutLeft, 
+  FadeIn, 
+  FadeOut,
+  interpolate, 
+  useAnimatedStyle, 
+  useSharedValue, 
+  withTiming
+} from 'react-native-reanimated';
 
 // スプラッシュスクリーンを表示し続ける
 SplashScreen.preventAutoHideAsync();
@@ -22,6 +34,103 @@ export { ErrorBoundary };
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: 'login',
+};
+
+// カードインターポレーターのパラメータ型を定義
+interface CardInterpolationProps {
+  current: { progress: { interpolate: (params: { inputRange: number[], outputRange: any[] }) => any } };
+  next?: { progress: { interpolate: (params: { inputRange: number[], outputRange: any[] }) => any } };
+  layouts: { screen: { width: number, height: number } };
+}
+
+// カスタムトランジションアニメーション
+const customTransition = {
+  gestureEnabled: true,
+  gestureDirection: 'horizontal',
+  transitionSpec: {
+    open: {
+      animation: 'timing',
+      config: {
+        duration: 350,
+        easing: Easing.bezier(0.25, 1, 0.5, 1),
+      },
+    },
+    close: {
+      animation: 'timing',
+      config: {
+        duration: 300,
+        easing: Easing.bezier(0.25, 1, 0.5, 1),
+      },
+    },
+  },
+  cardStyleInterpolator: ({ current, next, layouts }: CardInterpolationProps) => {
+    return {
+      cardStyle: {
+        transform: [
+          {
+            translateX: current.progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [layouts.screen.width, 0],
+            }),
+          },
+        ],
+        opacity: current.progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.5, 1],
+        }),
+      },
+      overlayStyle: {
+        opacity: current.progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 0.5],
+        }),
+      },
+    };
+  },
+};
+
+// モーダル用のトランジション
+const modalTransition = {
+  gestureEnabled: true,
+  gestureDirection: 'vertical',
+  transitionSpec: {
+    open: {
+      animation: 'timing',
+      config: {
+        duration: 400,
+        easing: Easing.bezier(0.35, 0.9, 0.1, 1),
+      },
+    },
+    close: {
+      animation: 'timing',
+      config: {
+        duration: 300,
+        easing: Easing.bezier(0.35, 0.9, 0.1, 1),
+      },
+    },
+  },
+  cardStyleInterpolator: ({ current, layouts }: CardInterpolationProps) => {
+    return {
+      cardStyle: {
+        transform: [
+          {
+            translateY: current.progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [layouts.screen.height, 0],
+            }),
+          },
+        ],
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+      },
+      overlayStyle: {
+        opacity: current.progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 0.6],
+        }),
+      },
+    };
+  },
 };
 
 // 認証状態に基づいてリダイレクトを行うコンポーネント
@@ -141,29 +250,83 @@ function RootLayoutNav() {
         }
       };
 
+  // カスタムアニメーション用のコンポーネント
+  const AnimatedStack = Animated.createAnimatedComponent(Stack);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <UserProvider>
-          <FirebaseProvider>
-            <DataProvider>
-              {/* React Native Paperのプロバイダーを追加 */}
-              <PaperProvider theme={paperTheme}>
-                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                  <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                  <AuthStateListener>
-                    <Stack screenOptions={{ headerShown: false }}>
-                      <Stack.Screen name="login" options={{ headerShown: false }} />
-                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                      <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
-                      <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-                    </Stack>
-                  </AuthStateListener>
-                </ThemeProvider>
-              </PaperProvider>
-            </DataProvider>
-          </FirebaseProvider>
-        </UserProvider>
+        <ThemeProvider>
+          <UserProvider>
+            <FirebaseProvider>
+              <DataProvider>
+                {/* React Native Paperのプロバイダーを追加 */}
+                <PaperProvider theme={paperTheme}>
+                  <NavigationThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                    <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+                    <AuthStateListener>
+                      <Stack 
+                        screenOptions={{ 
+                          headerShown: false,
+                          animation: 'fade_from_bottom',
+                          animationDuration: 300,
+                          gestureEnabled: true,
+                        }}
+                      >
+                        <Stack.Screen 
+                          name="login" 
+                          options={{ 
+                            headerShown: false,
+                            animation: 'fade',
+                            animationDuration: 400,
+                          }} 
+                        />
+                        <Stack.Screen 
+                          name="(tabs)" 
+                          options={{ 
+                            headerShown: false,
+                            animation: 'slide_from_right',
+                            animationDuration: 350,
+                          }} 
+                        />
+                        <Stack.Screen 
+                          name="(drawer)" 
+                          options={{ 
+                            headerShown: false,
+                            animation: 'slide_from_right',
+                            animationDuration: 350,
+                          }} 
+                        />
+                        <Stack.Screen 
+                          name="modal" 
+                          options={{ 
+                            presentation: 'modal',
+                            animation: 'slide_from_bottom',
+                            animationDuration: 400,
+                          }} 
+                        />
+                        <Stack.Screen 
+                          name="onboarding" 
+                          options={{ 
+                            animation: 'fade',
+                            animationDuration: 500,
+                          }} 
+                        />
+                        <Stack.Screen 
+                          name="instrument-selector" 
+                          options={{ 
+                            animation: 'fade_from_bottom', 
+                            animationDuration: 450,
+                          }} 
+                        />
+                      </Stack>
+                    </AuthStateListener>
+                  </NavigationThemeProvider>
+                </PaperProvider>
+              </DataProvider>
+            </FirebaseProvider>
+          </UserProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

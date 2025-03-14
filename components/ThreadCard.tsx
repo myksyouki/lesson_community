@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAuth } from 'firebase/auth';
 import { threadService } from '../firebase/services';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, interpolateColor, Easing } from 'react-native-reanimated';
 
 interface ThreadCardProps {
   id: string;
@@ -40,6 +41,12 @@ export default function ThreadCard({
   const [likeCount, setLikeCount] = useState(likes);
   const [replyCount, setReplyCount] = useState(replies);
   const [liked, setLiked] = useState(isLiked);
+  
+  // アニメーション用の値
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+  const likeScale = useSharedValue(1);
+  const likeRotation = useSharedValue(0);
   
   // リアルタイム更新：いいね数とコメント数を取得
   useEffect(() => {
@@ -92,6 +99,12 @@ export default function ThreadCard({
   
   // いいねのハンドリング
   const handleLike = async () => {
+    // アニメーションを実行
+    likeScale.value = withSpring(1.5, { damping: 2 }, () => {
+      likeScale.value = withSpring(1);
+    });
+    likeRotation.value = withTiming(liked ? 0 : 1, { duration: 300, easing: Easing.elastic(1) });
+    
     if (onLikeToggle) {
       onLikeToggle(id);
       return;
@@ -110,53 +123,88 @@ export default function ThreadCard({
     }
   };
   
+  // タップしたときのアニメーション
+  const handlePressIn = () => {
+    scale.value = withSpring(0.97);
+    opacity.value = withTiming(0.9, { duration: 100 });
+  };
+  
+  const handlePressOut = () => {
+    scale.value = withSpring(1);
+    opacity.value = withTiming(1, { duration: 150 });
+  };
+  
+  // アニメーションスタイル
+  const animatedCardStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: scale.value }],
+      opacity: opacity.value,
+    };
+  });
+  
+  const animatedLikeStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { scale: likeScale.value },
+        { rotate: `${likeRotation.value * 30}deg` }
+      ],
+    };
+  });
+  
   return (
-    <TouchableOpacity 
-      style={styles.container}
-      onPress={() => router.push(`/threads/${channelId}/${id}`)}
-    >
-      <LinearGradient 
-        colors={['rgba(40, 40, 60, 0.8)', 'rgba(20, 20, 30, 0.8)']} 
-        style={styles.gradient}
+    <Animated.View style={animatedCardStyle}>
+      <TouchableOpacity 
+        style={styles.container}
+        onPress={() => router.push(`/threads/${channelId}/${id}`)}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.9}
       >
-        <View style={styles.headerContainer}>
-          <View style={styles.authorContainer}>
-            <Image 
-              source={{ uri: author.avatar || 'https://via.placeholder.com/40' }} 
-              style={styles.avatar} 
-            />
-            <View style={styles.authorInfo}>
-              <Text style={styles.authorName}>{author.name}</Text>
-              <Text style={styles.date}>{formatDate(createdAt)}</Text>
+        <LinearGradient 
+          colors={['rgba(40, 40, 60, 0.8)', 'rgba(20, 20, 30, 0.8)']} 
+          style={styles.gradient}
+        >
+          <View style={styles.headerContainer}>
+            <View style={styles.authorContainer}>
+              <Image 
+                source={{ uri: author.avatar || 'https://via.placeholder.com/40' }} 
+                style={styles.avatar} 
+              />
+              <View style={styles.authorInfo}>
+                <Text style={styles.authorName}>{author.name}</Text>
+                <Text style={styles.date}>{formatDate(createdAt)}</Text>
+              </View>
+            </View>
+            
+            <View style={[styles.indicator, { backgroundColor: color }]} />
+          </View>
+          
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.content} numberOfLines={2}>{content}</Text>
+          
+          <View style={styles.statsContainer}>
+            <TouchableOpacity 
+              style={styles.statItem}
+              onPress={handleLike}
+            >
+              <Animated.View style={animatedLikeStyle}>
+                <Ionicons 
+                  name={liked ? "heart" : "heart-outline"} 
+                  size={16} 
+                  color={liked ? color : "#999999"} 
+                />
+              </Animated.View>
+              <Text style={[styles.statText, liked ? {color: color} : {}]}>{likeCount}</Text>
+            </TouchableOpacity>
+            
+            <View style={styles.statItem}>
+              <Ionicons name="chatbubble-outline" size={16} color="#999999" />
+              <Text style={styles.statText}>{replyCount}</Text>
             </View>
           </View>
-          
-          <View style={[styles.indicator, { backgroundColor: color }]} />
-        </View>
-        
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.content} numberOfLines={2}>{content}</Text>
-        
-        <View style={styles.statsContainer}>
-          <TouchableOpacity 
-            style={styles.statItem}
-            onPress={handleLike}
-          >
-            <Ionicons 
-              name={liked ? "heart" : "heart-outline"} 
-              size={16} 
-              color={liked ? color : "#999999"} 
-            />
-            <Text style={[styles.statText, liked ? {color: color} : {}]}>{likeCount}</Text>
-          </TouchableOpacity>
-          
-          <View style={styles.statItem}>
-            <Ionicons name="chatbubble-outline" size={16} color="#999999" />
-            <Text style={styles.statText}>{replyCount}</Text>
-          </View>
-        </View>
-      </LinearGradient>
-    </TouchableOpacity>
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 

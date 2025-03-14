@@ -41,8 +41,12 @@ export default function ThreadListScreen() {
             setChannelInfo(currentChannel);
           }
           
-          // スレッド一覧を取得
-          const threadsData = await threadService.getThreadsByChannel(channelId);
+          // スレッド一覧を取得 - instrument パラメータを追加
+          const threadsData = await threadService.getThreadsByChannel(
+            channelId, 
+            sortBy,
+            typeof instrument === 'string' ? instrument : undefined
+          );
           setThreads(threadsData);
           setFilteredThreads(threadsData);
           
@@ -58,7 +62,7 @@ export default function ThreadListScreen() {
     };
 
     fetchData();
-  }, [channelId, instrument]);
+  }, [channelId, instrument, sortBy]);
 
   const showSnackbar = (message: string) => {
     setSnackbarMessage(message);

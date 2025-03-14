@@ -69,7 +69,7 @@ interface DataContextType {
   deleteChannel: (channelId: string) => Promise<boolean>;
   getUserCreatedChannels: (userId: string) => Channel[];
   subscribeToChannelUpdates: (channelId: string, callback: (channel: Channel | null) => void) => () => void;
-  subscribeToThreadsInChannel: (channelId: string, callback: (threads: Thread[]) => void) => () => void;
+  subscribeToThreadsInChannel: (channelId: string, callback: (threads: Thread[]) => void, instrument?: string) => () => void;
   subscribeToHotThreads: (category: string | null, limit: number, callback: (threads: Thread[]) => void) => () => void;
 }
 
@@ -1203,65 +1203,74 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // チャンネル内のスレッドのリアルタイム監視を設定
-  const subscribeToThreadsInChannel = (channelId: string, callback: (threads: Thread[]) => void): () => void => {
-    return threadService.subscribeToThreadsByChannel(channelId, 'lastActivity', async (fbThreads) => {
-      try {
-        // ユーザーID（ログイン中の場合）
-        const auth = getAuth();
-        const currentUserId = auth.currentUser?.uid;
-        
-        // スレッドデータを変換
-        const threadsPromises = fbThreads.map(async (fbThread) => {
-          // いいねの状態を取得
-          let isLiked = false;
-          if (currentUserId) {
-            isLiked = await threadService.isThreadLikedByUser(fbThread.id, currentUserId);
-          }
+  const subscribeToThreadsInChannel = (
+    channelId: string, 
+    callback: (threads: Thread[]) => void,
+    instrument?: string
+  ): () => void => {
+    return threadService.subscribeToThreadsByChannel(
+      channelId, 
+      'lastActivity', 
+      async (fbThreads) => {
+        try {
+          // ユーザーID（ログイン中の場合）
+          const auth = getAuth();
+          const currentUserId = auth.currentUser?.uid;
           
-          // いいね数を取得
-          const likeCount = fbThread.likeCount !== undefined 
-            ? fbThread.likeCount 
-            : await threadService.getThreadLikeCount(fbThread.id);
-          
-          // 各スレッドの内容を取得
-          let content = fbThread.content || '';
-          if (!content) {
-            try {
-              const messages = await messageService.getMessagesByThread(fbThread.id, 1);
-              if (messages.length > 0) {
-                content = messages[0].content;
-              }
-            } catch (error) {
-              console.error(`スレッド ${fbThread.id} の内容取得エラー:`, error);
+          // スレッドデータを変換
+          const threadsPromises = fbThreads.map(async (fbThread) => {
+            // いいねの状態を取得
+            let isLiked = false;
+            if (currentUserId) {
+              isLiked = await threadService.isThreadLikedByUser(fbThread.id, currentUserId);
             }
-          }
+            
+            // いいね数を取得
+            const likeCount = fbThread.likeCount !== undefined 
+              ? fbThread.likeCount 
+              : await threadService.getThreadLikeCount(fbThread.id);
+            
+            // 各スレッドの内容を取得
+            let content = fbThread.content || '';
+            if (!content) {
+              try {
+                const messages = await messageService.getMessagesByThread(fbThread.id, 1);
+                if (messages.length > 0) {
+                  content = messages[0].content;
+                }
+              } catch (error) {
+                console.error(`スレッド ${fbThread.id} の内容取得エラー:`, error);
+              }
+            }
+            
+            return {
+              id: fbThread.id,
+              title: fbThread.title,
+              content: content,
+              author: {
+                id: fbThread.authorId,
+                name: fbThread.authorName,
+                avatar: fbThread.authorAvatar || '',
+              },
+              createdAt: fbThread.createdAt.toISOString(),
+              likes: likeCount,
+              replies: fbThread.messageCount,
+              isLiked: isLiked,
+              channelId: fbThread.channelId,
+              messages: [], // 初期状態では空配列
+            };
+          });
           
-          return {
-            id: fbThread.id,
-            title: fbThread.title,
-            content: content,
-            author: {
-              id: fbThread.authorId,
-              name: fbThread.authorName,
-              avatar: fbThread.authorAvatar || '',
-            },
-            createdAt: fbThread.createdAt.toISOString(),
-            likes: likeCount,
-            replies: fbThread.messageCount,
-            isLiked: isLiked,
-            channelId: fbThread.channelId,
-            messages: [], // 初期状態では空配列
-          };
-        });
-        
-        // すべてのスレッドデータを待機して返す
-        const threads = await Promise.all(threadsPromises);
-        callback(threads);
-      } catch (error) {
-        console.error(`チャンネル ${channelId} のスレッド監視処理エラー:`, error);
-        callback([]);
-      }
-    });
+          // すべてのスレッドデータを待機して返す
+          const threads = await Promise.all(threadsPromises);
+          callback(threads);
+        } catch (error) {
+          console.error(`チャンネル ${channelId} のスレッド監視処理エラー:`, error);
+          callback([]);
+        }
+      },
+      instrument // instrumentパラメータを追加
+    );
   };
 
   // HOTスレッドのリアルタイム監視を設定
@@ -1313,12 +1322,23 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             isLiked: isLiked,
             channelId: fbThread.channelId,
             messages: [], // 初期状態では空配列
+            instrument: fbThread.instrument
           };
         });
         
         // すべてのスレッドデータを待機して返す
         const threads = await Promise.all(threadsPromises);
-        callback(threads);
+        
+        // カテゴリーが指定されている場合は、そのカテゴリーのスレッドのみをフィルタリング
+        const filteredThreads = category 
+          ? threads.filter(thread => {
+              // Threadの型に定義がないためanyとして扱う
+              const threadAny = thread as any;
+              return threadAny.instrument === category;
+            })
+          : threads;
+          
+        callback(filteredThreads);
       } catch (error) {
         console.error(`HOTスレッド監視処理エラー:`, error);
         callback([]);

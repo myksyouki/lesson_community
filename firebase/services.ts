@@ -549,35 +549,27 @@ export const channelService = {
 // スレッド関連のサービス
 export const threadService = {
   // チャンネル内のスレッド一覧を取得
-  async getThreadsByChannel(channelId: string, sortBy: string = 'lastActivity'): Promise<Thread[]> {
+  async getThreadsByChannel(channelId: string, sortBy: string = 'lastActivity', instrument?: string): Promise<Thread[]> {
     try {
-      let threadsQuery;
+      let queryConstraints: any[] = [where('channelId', '==', channelId)];
       
-      if (sortBy === 'lastActivity') {
-        threadsQuery = query(
-          collection(db, 'threads'),
-          where('channelId', '==', channelId),
-          orderBy('lastActivity', 'desc')
-        );
-      } else if (sortBy === 'createdAt') {
-        threadsQuery = query(
-          collection(db, 'threads'),
-          where('channelId', '==', channelId),
-          orderBy('createdAt', 'desc')
-        );
-      } else if (sortBy === 'messageCount') {
-        threadsQuery = query(
-          collection(db, 'threads'),
-          where('channelId', '==', channelId),
-          orderBy('messageCount', 'desc')
-        );
-      } else {
-        threadsQuery = query(
-          collection(db, 'threads'),
-          where('channelId', '==', channelId),
-          orderBy('lastActivity', 'desc')
-        );
+      // instrumentが指定されている場合は、そのinstrumentに関連するスレッドのみを取得
+      if (instrument) {
+        queryConstraints.push(where('instrument', '==', instrument));
       }
+      
+      // ソート条件を追加
+      if (sortBy === 'lastActivity') {
+        queryConstraints.push(orderBy('lastActivity', 'desc'));
+      } else if (sortBy === 'createdAt') {
+        queryConstraints.push(orderBy('createdAt', 'desc'));
+      } else if (sortBy === 'messageCount') {
+        queryConstraints.push(orderBy('messageCount', 'desc'));
+      } else {
+        queryConstraints.push(orderBy('lastActivity', 'desc'));
+      }
+      
+      const threadsQuery = query(collection(db, 'threads'), ...queryConstraints);
       
       const threadDocs = await getDocs(threadsQuery);
       return threadDocs.docs.map(doc => {
@@ -887,36 +879,29 @@ export const threadService = {
   subscribeToThreadsByChannel(
     channelId: string, 
     sortBy: string = 'lastActivity',
-    callback: (threads: Thread[]) => void
+    callback: (threads: Thread[]) => void,
+    instrument?: string
   ): () => void {
     try {
-      let threadsQuery;
+      let queryConstraints: any[] = [where('channelId', '==', channelId)];
       
-      if (sortBy === 'lastActivity') {
-        threadsQuery = query(
-          collection(db, 'threads'),
-          where('channelId', '==', channelId),
-          orderBy('lastActivity', 'desc')
-        );
-      } else if (sortBy === 'createdAt') {
-        threadsQuery = query(
-          collection(db, 'threads'),
-          where('channelId', '==', channelId),
-          orderBy('createdAt', 'desc')
-        );
-      } else if (sortBy === 'messageCount') {
-        threadsQuery = query(
-          collection(db, 'threads'),
-          where('channelId', '==', channelId),
-          orderBy('messageCount', 'desc')
-        );
-      } else {
-        threadsQuery = query(
-          collection(db, 'threads'),
-          where('channelId', '==', channelId),
-          orderBy('lastActivity', 'desc')
-        );
+      // instrumentが指定されている場合は、そのinstrumentに関連するスレッドのみを取得
+      if (instrument) {
+        queryConstraints.push(where('instrument', '==', instrument));
       }
+      
+      // ソート条件を追加
+      if (sortBy === 'lastActivity') {
+        queryConstraints.push(orderBy('lastActivity', 'desc'));
+      } else if (sortBy === 'createdAt') {
+        queryConstraints.push(orderBy('createdAt', 'desc'));
+      } else if (sortBy === 'messageCount') {
+        queryConstraints.push(orderBy('messageCount', 'desc'));
+      } else {
+        queryConstraints.push(orderBy('lastActivity', 'desc'));
+      }
+      
+      const threadsQuery = query(collection(db, 'threads'), ...queryConstraints);
       
       // onSnapshotリスナーを設定
       const unsubscribe = onSnapshot(threadsQuery, (snapshot) => {
@@ -958,7 +943,9 @@ export const threadService = {
     try {
       let threadsQuery;
       
+      // instrumentが指定されている場合は、そのinstrumentに関連するスレッドのみを取得
       if (instrument) {
+        console.log(`Getting HOT threads for instrument: ${instrument}`);
         threadsQuery = query(
           collection(db, 'threads'),
           where('instrument', '==', instrument),
@@ -966,6 +953,8 @@ export const threadService = {
           limit(limitCount * 3) // 多めに取得してクライアント側でソート
         );
       } else {
+        // instrumentが指定されていない場合は全てのスレッドを取得
+        console.log('Getting HOT threads for all instruments');
         threadsQuery = query(
           collection(db, 'threads'),
           orderBy('lastActivity', 'desc'),
@@ -992,9 +981,16 @@ export const threadService = {
           } as Thread;
         });
         
+        // instrumentが指定されている場合は、再度クライアント側でフィルタリング (念のため)
+        let filteredThreads = threads;
+        if (instrument) {
+          filteredThreads = threads.filter(thread => thread.instrument === instrument);
+          console.log(`Filtered to ${filteredThreads.length} threads for instrument ${instrument}`);
+        }
+        
         // ここでは仮にlastActivity（最終活動時間）でソートしています
         // 実際のアプリケーションでは「いいね」の数でソートする必要があります
-        const sortedThreads = [...threads].sort((a, b) => {
+        const sortedThreads = [...filteredThreads].sort((a, b) => {
           const timeA = a.lastActivity instanceof Date ? a.lastActivity.getTime() : 0;
           const timeB = b.lastActivity instanceof Date ? b.lastActivity.getTime() : 0;
           return timeB - timeA;
