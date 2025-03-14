@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,6 +14,7 @@ interface ChannelCardProps {
   color?: string;
   membersCount?: number;
   threadsCount?: number;
+  tags?: string[];
 }
 
 export default function ChannelCard({ 
@@ -23,7 +24,8 @@ export default function ChannelCard({
   icon = 'chatbubbles', 
   color = '#7F3DFF',
   membersCount = 0,
-  threadsCount = 0
+  threadsCount = 0,
+  tags = []
 }: ChannelCardProps) {
   const [threadCount, setThreadCount] = useState(threadsCount);
   
@@ -95,6 +97,26 @@ export default function ChannelCard({
     };
   });
   
+  // タグの色を計算（色相環上で少しずつずらす）
+  const getTagColor = (index: number) => {
+    // カードの色をベースに、少しずつ色相をずらす
+    const baseColor = color;
+    const indexOffset = index * 30; // 30度ずつ色相をずらす
+    
+    // シンプルな実装として、7つの定義済み色を循環させる
+    const tagColors = [
+      baseColor, 
+      '#FF3D77', 
+      '#3D7FFF', 
+      '#FF9F3D', 
+      '#3DFFCF', 
+      '#FF3D3D', 
+      '#B03DFF'
+    ];
+    
+    return tagColors[index % tagColors.length];
+  };
+  
   return (
     <Animated.View style={animatedCardStyle}>
       <TouchableOpacity 
@@ -119,6 +141,30 @@ export default function ChannelCard({
           
           <Text style={styles.title}>{name}</Text>
           <Text style={styles.description} numberOfLines={2}>{description}</Text>
+          
+          {/* タグ表示エリア */}
+          {tags && tags.length > 0 && (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.tagsContainer}
+              contentContainerStyle={styles.tagsContent}
+            >
+              {tags.map((tag, index) => (
+                <View 
+                  key={`${id}-tag-${index}`} 
+                  style={[
+                    styles.tagItem, 
+                    { backgroundColor: `${getTagColor(index)}20` }
+                  ]}
+                >
+                  <Text style={[styles.tagText, { color: getTagColor(index) }]}>
+                    {tag}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          )}
           
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
@@ -179,7 +225,24 @@ const styles = StyleSheet.create({
     color: '#E0E0E0',
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  tagsContainer: {
+    marginBottom: 12,
+  },
+  tagsContent: {
+    flexDirection: 'row',
+    paddingRight: 8,
+  },
+  tagItem: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 6,
+  },
+  tagText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   statsContainer: {
     flexDirection: 'row',
