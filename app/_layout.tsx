@@ -25,7 +25,8 @@ import Animated, {
   useSharedValue, 
   withTiming
 } from 'react-native-reanimated';
-import { SideMenuProvider } from '../contexts/SideMenuContext';
+import { SideMenuProvider, useSideMenu } from '../contexts/SideMenuContext';
+import SideMenu from '../components/SideMenu';
 
 // スプラッシュスクリーンを表示し続ける
 SplashScreen.preventAutoHideAsync();
@@ -265,6 +266,7 @@ function RootLayoutNav() {
                   <NavigationThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
                     <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
                     <SideMenuProvider>
+                      <SideMenuWithContext />
                       <AuthStateListener>
                         <Stack 
                           screenOptions={{ 
@@ -331,5 +333,19 @@ function RootLayoutNav() {
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+// SideMenuコンポーネントをSideMenuContextと連携させるためのラッパーコンポーネント
+function SideMenuWithContext() {
+  const { isMenuOpen, closeMenu, isMenuExpanded, setMenuExpanded } = useSideMenu();
+  
+  return (
+    <SideMenu 
+      isOpen={isMenuOpen} 
+      onClose={closeMenu}
+      isExpanded={isMenuExpanded}
+      onExpandChange={setMenuExpanded}
+    />
   );
 }

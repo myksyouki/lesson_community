@@ -297,16 +297,20 @@ export default function InstrumentSelectorScreen({ isModal = false, onClose }: I
   ).current;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar style="light" />
       
-      {/* 戻るボタン - 左上に配置 */}
-      <TouchableOpacity 
-        style={styles.backButtonTop}
-        onPress={handleCancel}
-      >
-        <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-      </TouchableOpacity>
+      {/* ヘッダー */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={handleCancel}
+        >
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>楽器を選択</Text>
+        <View style={{ width: 40 }} />
+      </View>
       
       <Animated.View 
         style={[
@@ -483,6 +487,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121212',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(42, 42, 42, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   backButtonTop: {
     position: 'absolute',

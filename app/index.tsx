@@ -79,7 +79,7 @@ export default function HomeScreen() {
     router.push('/settings');
   };
   
-  // 右スワイプで戻るための処理を追加
+  // 右スワイプでサイドメニューを開くための処理
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -88,7 +88,8 @@ export default function HomeScreen() {
       },
       onPanResponderRelease: (_, gestureState) => {
         if (gestureState.dx > 50) {
-          router.back();
+          // 右スワイプでサイドメニューを開く
+          openMenu();
         }
       },
     })
@@ -270,127 +271,7 @@ export default function HomeScreen() {
             </View>
           </ScrollView>
           
-          {/* サイドメニュー */}
-          {isMenuOpen && (
-            <View style={styles.menuOverlay}>
-              <TouchableOpacity 
-                style={styles.menuCloseArea} 
-                onPress={closeMenu}
-                activeOpacity={1}
-              />
-              <View style={styles.sideMenu}>
-                {/* ユーザー情報 */}
-                <View style={[styles.menuUserSection, { borderBottomColor: `${themeColor}40` }]}>
-                  <Image 
-                    source={{ uri: userState?.avatarUrl || 'https://via.placeholder.com/100' }} 
-                    style={styles.menuUserAvatar} 
-                  />
-                  <Text style={styles.menuUserName}>{userState?.username || 'ゲスト'}</Text>
-                  <Text style={styles.menuUserEmail}>{userState?.bio || 'ログインしていません'}</Text>
-                </View>
-                
-                {/* メニュー項目 */}
-                <ScrollView style={styles.menuItems}>
-                  <TouchableOpacity 
-                    style={styles.menuItem} 
-                    onPress={() => {
-                      closeMenu();
-                      router.push('/');
-                    }}
-                  >
-                    <Ionicons name="home-outline" size={24} color={themeColor} />
-                    <Text style={[styles.menuItemText, { color: themeColor }]}>ホーム</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.menuItem} 
-                    onPress={() => {
-                      closeMenu();
-                      navigateToChannels();
-                    }}
-                  >
-                    <Ionicons name="list-outline" size={24} color="#fff" />
-                    <Text style={styles.menuItemText}>チャンネル一覧</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.menuItem} 
-                    onPress={() => {
-                      closeMenu();
-                      navigateToProfile();
-                    }}
-                  >
-                    <Ionicons name="person-outline" size={24} color="#fff" />
-                    <Text style={styles.menuItemText}>プロフィール</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.menuItem} 
-                    onPress={() => {
-                      closeMenu();
-                      // 通知画面へのナビゲーション（現在は未実装）
-                      console.log('通知画面へ移動');
-                    }}
-                  >
-                    <Ionicons name="notifications-outline" size={24} color="#fff" />
-                    <Text style={styles.menuItemText}>通知</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.menuItem} 
-                    onPress={() => {
-                      closeMenu();
-                      // ブックマーク画面へのナビゲーション（現在は未実装）
-                      console.log('ブックマーク画面へ移動');
-                    }}
-                  >
-                    <Ionicons name="bookmark-outline" size={24} color="#fff" />
-                    <Text style={styles.menuItemText}>ブックマーク</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.menuItem} 
-                    onPress={() => {
-                      closeMenu();
-                      navigateToSettings();
-                    }}
-                  >
-                    <Ionicons name="settings-outline" size={24} color="#fff" />
-                    <Text style={styles.menuItemText}>設定</Text>
-                  </TouchableOpacity>
-                  
-                  <View style={[styles.menuDivider, { backgroundColor: `${themeColor}30` }]} />
-                  
-                  <TouchableOpacity 
-                    style={styles.menuItem} 
-                    onPress={() => {
-                      closeMenu();
-                      // ヘルプ画面へのナビゲーション（現在は未実装）
-                      console.log('ヘルプ画面へ移動');
-                    }}
-                  >
-                    <Ionicons name="help-circle-outline" size={24} color="#fff" />
-                    <Text style={styles.menuItemText}>ヘルプ</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.menuItem} 
-                    onPress={() => {
-                      closeMenu();
-                      // ログアウト処理
-                      console.log('ログアウト');
-                    }}
-                  >
-                    <Ionicons name="log-out-outline" size={24} color="#fff" />
-                    <Text style={styles.menuItemText}>ログアウト</Text>
-                  </TouchableOpacity>
-                </ScrollView>
-                
-                {/* バージョン情報 */}
-                <Text style={styles.menuVersion}>バージョン 1.0.0</Text>
-              </View>
-            </View>
-          )}
+          {/* サイドメニューはlayout.tsxで共通化 */}
         </SafeAreaView>
       </MusicGradientBackground>
     </View>
@@ -567,71 +448,6 @@ const styles = StyleSheet.create({
   activityMeta: {
     color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 12,
-  },
-  menuOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    zIndex: 1000,
-  },
-  menuCloseArea: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  sideMenu: {
-    width: width * 0.75,
-    maxWidth: 300,
-    backgroundColor: 'rgba(30, 30, 40, 0.95)',
-    height: '100%',
-  },
-  menuUserSection: {
-    padding: 20,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  menuUserAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginBottom: 12,
-  },
-  menuUserName: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  menuUserEmail: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 14,
-  },
-  menuItems: {
-    flex: 1,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-  },
-  menuItemText: {
-    color: '#fff',
-    fontSize: 16,
-    marginLeft: 16,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginVertical: 8,
-  },
-  menuVersion: {
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontSize: 12,
-    textAlign: 'center',
-    padding: 16,
   },
   selectedCategoryBadge: {
     marginTop: 12,
