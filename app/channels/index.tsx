@@ -103,12 +103,15 @@ const ChannelItemCard = ({ channel, onPress }: { channel: ExtendedChannel, onPre
 };
 
 // パンくずリスト用コンポーネント
-const Breadcrumb = ({ navigateHome }: { navigateHome: () => void }) => (
+const Breadcrumb = ({ navigateHome, router }: { navigateHome: () => void, router: any }) => (
   <View style={styles.breadcrumbContainer}>
-    <View style={[styles.breadcrumbItem, styles.breadcrumbActive]}>
+    <TouchableOpacity 
+      style={[styles.breadcrumbItem, styles.breadcrumbActive]} 
+      onPress={() => router.push('/(drawer)')}
+    >
       <Ionicons name="home-outline" size={16} color="#fff" />
       <Text style={[styles.breadcrumbText, styles.breadcrumbActiveText]}>HOME</Text>
-    </View>
+    </TouchableOpacity>
     <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.6)" />
     <View style={styles.breadcrumbItem}>
       <Text style={styles.breadcrumbText}>チャンネル一覧</Text>
@@ -366,21 +369,21 @@ export default function ChannelListScreen() {
         <View style={styles.header}>
           <IconButton
             icon="menu"
-            iconColor="#fff"
             size={24}
+            iconColor="#fff"
             onPress={openMenu}
           />
           <Text style={styles.headerTitle}>チャンネル一覧</Text>
           <IconButton
-            icon="bell-outline"
-            iconColor="#fff"
+            icon="notifications-outline"
             size={24}
-            onPress={() => console.log('通知ボタンが押されました')}
+            iconColor="#fff"
+            onPress={() => {}}
           />
         </View>
         
         {/* パンくずリスト */}
-        <Breadcrumb navigateHome={() => router.push('/')} />
+        <Breadcrumb navigateHome={() => router.push('/')} router={router} />
         
         {/* 検索バー */}
         <View style={styles.searchContainer}>

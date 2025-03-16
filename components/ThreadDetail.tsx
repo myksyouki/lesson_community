@@ -2,9 +2,11 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Avatar, Divider } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import { formatDistanceToNow } from 'date-fns';
+import { ja } from 'date-fns/locale';
 
 // スレッドの型定義
-export interface ThreadProps {
+export interface ThreadDetailProps {
   id: string;
   title: string;
   content: string;
@@ -17,13 +19,13 @@ export interface ThreadProps {
   channelId: string;
   likes: number;
   isLiked: boolean;
-  image?: string;
   commentCount: number;
   tags?: string[];
+  image?: string;
 }
 
-interface ThreadDetailProps {
-  thread: ThreadProps;
+// スレッドの表示用Props
+export interface ThreadDetailViewProps extends ThreadDetailProps {
   onLike: () => void;
   onReply: () => void;
   onShare: () => void;
@@ -72,44 +74,52 @@ export const BreadcrumbNavigation = ({
   );
 };
 
-const ThreadDetail = ({
-  thread,
+export default function ThreadDetail({
+  title,
+  content,
+  author,
+  createdAt,
+  likes,
+  isLiked,
+  commentCount,
+  tags,
+  image,
   onLike,
   onReply,
   onShare,
-  accentColor
-}: ThreadDetailProps) => {
+  accentColor,
+}: ThreadDetailViewProps) {
   // 日付をフォーマット
-  const formattedDate = formatDate(new Date(thread.createdAt));
+  const formattedDate = formatDate(new Date(createdAt));
 
   return (
     <View style={styles.container}>
       <View style={styles.authorContainer}>
         <Avatar.Image 
           size={40} 
-          source={{ uri: thread.author.avatar }} 
+          source={{ uri: author.avatar }} 
         />
         <View style={styles.authorInfo}>
-          <Text style={styles.authorName}>{thread.author.name}</Text>
+          <Text style={styles.authorName}>{author.name}</Text>
           <Text style={styles.date}>{formattedDate}</Text>
         </View>
       </View>
       
-      <Text style={styles.title}>{thread.title}</Text>
-      <Text style={styles.content}>{thread.content}</Text>
+      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.content}>{content}</Text>
       
-      {thread.image && (
+      {image && (
         <Image 
-          source={{ uri: thread.image }} 
+          source={{ uri: image }} 
           style={styles.image}
           resizeMode="cover"
         />
       )}
       
       {/* タグの表示 */}
-      {thread.tags && thread.tags.length > 0 && (
+      {tags && tags.length > 0 && (
         <View style={styles.tagsContainer}>
-          {thread.tags.map((tag, index) => (
+          {tags.map((tag, index) => (
             <View key={index} style={[styles.tag, { backgroundColor: `${accentColor}30` }]}>
               <Text style={[styles.tagText, { color: accentColor }]}>{tag}</Text>
             </View>
@@ -123,17 +133,17 @@ const ThreadDetail = ({
           onPress={onLike}
         >
           <Ionicons 
-            name={thread.isLiked ? "heart" : "heart-outline"} 
+            name={isLiked ? "heart" : "heart-outline"} 
             size={20} 
-            color={thread.isLiked ? accentColor : "#AAAAAA"} 
+            color={isLiked ? accentColor : "#AAAAAA"} 
           />
           <Text 
             style={[
               styles.actionText, 
-              thread.isLiked ? { color: accentColor } : {}
+              isLiked ? { color: accentColor } : {}
             ]}
           >
-            {thread.likes || 0}
+            {likes || 0}
           </Text>
         </TouchableOpacity>
         
@@ -156,10 +166,10 @@ const ThreadDetail = ({
       
       <Divider style={styles.divider} />
       
-      <Text style={styles.repliesTitle}>返信 {thread.commentCount}件</Text>
+      <Text style={styles.repliesTitle}>返信 {commentCount}件</Text>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -266,6 +276,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
-});
-
-export default ThreadDetail; 
+}); 

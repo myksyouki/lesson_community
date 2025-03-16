@@ -190,7 +190,7 @@ function AuthStateListener({ children }: { children: React.ReactNode }) {
       router.replace('/login');
     } else if (shouldRedirectToHome) {
       hasRedirectedRef.current = true;
-      router.replace('/(drawer)');
+      router.replace('/');
     }
   }, [user, loading]); // segmentsは依存配列から除外し、認証状態の変更時のみ実行
 

@@ -107,22 +107,17 @@ const TagList = ({ tags, selectedTags, onSelectTag, themeColor }: {
 );
 
 // パンくずリスト表示用コンポーネント
-const Breadcrumb = ({ 
-  channelName, 
-  navigateHome, 
-  navigateChannelList 
-}: { 
-  channelName: string, 
-  navigateHome: () => void,
-  navigateChannelList: () => void 
-}) => (
+const BreadcrumbNavigation = ({ channelName, router }: { channelName: string, router: any }) => (
   <View style={styles.breadcrumbContainer}>
-    <TouchableOpacity style={styles.breadcrumbItem} onPress={navigateHome}>
-      <Ionicons name="home-outline" size={16} color="rgba(255, 255, 255, 0.6)" />
+    <TouchableOpacity 
+      style={styles.breadcrumbItem} 
+      onPress={() => router.push('/')}
+    >
+      <Ionicons name="home-outline" size={16} color="#fff" />
       <Text style={styles.breadcrumbText}>HOME</Text>
     </TouchableOpacity>
     <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.6)" />
-    <TouchableOpacity style={styles.breadcrumbItem} onPress={navigateChannelList}>
+    <TouchableOpacity style={styles.breadcrumbItem} onPress={() => router.push('/channels')}>
       <Text style={styles.breadcrumbText}>チャンネル一覧</Text>
     </TouchableOpacity>
     <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.6)" />
@@ -183,26 +178,25 @@ export default function ChannelDetailScreen() {
         {/* ヘッダー */}
         <View style={styles.header}>
           <IconButton
-            icon="arrow-left"
-            iconColor="#fff"
-            size={24}
-            onPress={() => router.back()}
-          />
-          <Text style={styles.headerTitle}>{channel?.name || 'チャンネル詳細'}</Text>
-          <IconButton
             icon="menu"
             iconColor="#fff"
             size={24}
             onPress={openMenu}
           />
+          <Text style={styles.headerTitle}>{channel?.name || 'チャンネル詳細'}</Text>
+          <IconButton
+            icon="notifications-outline"
+            iconColor="#fff"
+            size={24}
+            onPress={() => {}}
+          />
         </View>
         
         {/* パンくずリスト */}
         {channel && (
-          <Breadcrumb 
-            channelName={channel.name} 
-            navigateHome={() => router.push('/')} 
-            navigateChannelList={() => router.push('/channels')}
+          <BreadcrumbNavigation 
+            channelName={channel.name}
+            router={router}
           />
         )}
         

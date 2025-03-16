@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Dimensions } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Dimensions, PanResponder } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -79,304 +79,321 @@ export default function HomeScreen() {
     router.push('/settings');
   };
   
+  // 右スワイプで戻るための処理を追加
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return gestureState.dx > 20 && Math.abs(gestureState.dy) < 20;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx > 50) {
+          router.back();
+        }
+      },
+    })
+  ).current;
+  
   return (
-    <MusicGradientBackground theme={getThemeForCategory(selectedCategory)} opacity={0.98}>
-      <SafeAreaView style={styles.container}>
-        <StatusBar style="light" />
-        
-        {/* ヘッダー */}
-        <View style={styles.header}>
-          <IconButton
-            icon="menu"
-            iconColor="#fff"
-            size={24}
-            onPress={openMenu}
-          />
-          <Text style={styles.headerTitle}>Music Community</Text>
-          <IconButton
-            icon="bell-outline"
-            iconColor="#fff"
-            size={24}
-            onPress={() => console.log('通知ボタンが押されました')}
-          />
-        </View>
-        
-        {/* メインコンテンツ */}
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          {/* ユーザーウェルカム */}
-          <View style={styles.welcomeSection}>
-            <MusicWaveAnimation color="#fff" count={3} height={60} position="top" opacity={0.3} />
-            <Text style={styles.welcomeText}>
-              こんにちは、{userState?.username || 'ゲスト'}さん
-            </Text>
-            <Text style={styles.welcomeSubText}>
-              音楽コミュニティへようこそ！
-            </Text>
-            <View style={[styles.selectedCategoryBadge, { backgroundColor: `${themeColor}50` }]}>
-              <Text style={styles.selectedCategoryText}>
-                選択カテゴリー：{INSTRUMENT_CATEGORIES.find(cat => cat.id === selectedCategory)?.name || 'なし'}
+    <View {...panResponder.panHandlers} style={styles.container}>
+      <MusicGradientBackground theme={getThemeForCategory(selectedCategory)} opacity={0.98}>
+        <SafeAreaView style={styles.container}>
+          <StatusBar style="light" />
+          
+          {/* ヘッダー */}
+          <View style={styles.header}>
+            <IconButton
+              icon="menu"
+              iconColor="#fff"
+              size={24}
+              onPress={openMenu}
+            />
+            <Text style={styles.headerTitle}>Music Community</Text>
+            <IconButton
+              icon="bell-outline"
+              iconColor="#fff"
+              size={24}
+              onPress={() => console.log('通知ボタンが押されました')}
+            />
+          </View>
+          
+          {/* メインコンテンツ */}
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+            {/* ユーザーウェルカム */}
+            <View style={styles.welcomeSection}>
+              <MusicWaveAnimation color="#fff" count={3} height={60} position="top" opacity={0.3} />
+              <Text style={styles.welcomeText}>
+                こんにちは、{userState?.username || 'ゲスト'}さん
               </Text>
-            </View>
-          </View>
-          
-          {/* クイックアクセス */}
-          <View style={styles.quickAccessSection}>
-            <Text style={styles.sectionTitle}>クイックアクセス</Text>
-            <View style={styles.quickAccessButtons}>
-              <TouchableOpacity 
-                style={[styles.quickAccessButton, { borderColor: themeColor }]}
-                onPress={navigateToChannels}
-              >
-                <Ionicons name="list" size={24} color={themeColor} />
-                <Text style={[styles.quickAccessText, { color: themeColor }]}>チャンネル一覧</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.quickAccessButton, { borderColor: themeColor }]}
-                onPress={navigateToProfile}
-              >
-                <Ionicons name="person" size={24} color={themeColor} />
-                <Text style={[styles.quickAccessText, { color: themeColor }]}>プロフィール</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.quickAccessButton, { borderColor: themeColor }]}
-                onPress={navigateToSettings}
-              >
-                <Ionicons name="settings" size={24} color={themeColor} />
-                <Text style={[styles.quickAccessText, { color: themeColor }]}>設定</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* おすすめチャンネル */}
-          <View style={styles.recommendedSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>おすすめチャンネル</Text>
-              <TouchableOpacity onPress={navigateToChannels}>
-                <Text style={[styles.seeAllText, { color: themeColor }]}>すべて見る</Text>
-              </TouchableOpacity>
+              <Text style={styles.welcomeSubText}>
+                音楽コミュニティへようこそ！
+              </Text>
+              <View style={[styles.selectedCategoryBadge, { backgroundColor: `${themeColor}50` }]}>
+                <Text style={styles.selectedCategoryText}>
+                  選択カテゴリー：{INSTRUMENT_CATEGORIES.find(cat => cat.id === selectedCategory)?.name || 'なし'}
+                </Text>
+              </View>
             </View>
             
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.recommendedChannelsContainer}
-            >
-              {filteredChannels.length > 0 ? (
-                filteredChannels.map(channel => (
+            {/* クイックアクセス */}
+            <View style={styles.quickAccessSection}>
+              <Text style={styles.sectionTitle}>クイックアクセス</Text>
+              <View style={styles.quickAccessButtons}>
+                <TouchableOpacity 
+                  style={[styles.quickAccessButton, { borderColor: themeColor }]}
+                  onPress={navigateToChannels}
+                >
+                  <Ionicons name="list" size={24} color={themeColor} />
+                  <Text style={[styles.quickAccessText, { color: themeColor }]}>チャンネル一覧</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.quickAccessButton, { borderColor: themeColor }]}
+                  onPress={navigateToProfile}
+                >
+                  <Ionicons name="person" size={24} color={themeColor} />
+                  <Text style={[styles.quickAccessText, { color: themeColor }]}>プロフィール</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.quickAccessButton, { borderColor: themeColor }]}
+                  onPress={navigateToSettings}
+                >
+                  <Ionicons name="settings" size={24} color={themeColor} />
+                  <Text style={[styles.quickAccessText, { color: themeColor }]}>設定</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            
+            {/* おすすめチャンネル */}
+            <View style={styles.recommendedSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>おすすめチャンネル</Text>
+                <TouchableOpacity onPress={navigateToChannels}>
+                  <Text style={[styles.seeAllText, { color: themeColor }]}>すべて見る</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.recommendedChannelsContainer}
+              >
+                {filteredChannels.length > 0 ? (
+                  filteredChannels.map(channel => (
+                    <TouchableOpacity 
+                      key={channel.id} 
+                      style={[styles.channelCard, { borderColor: `${themeColor}50` }]}
+                      onPress={() => router.push(`/channels/${channel.id}`)}
+                    >
+                      <Text style={styles.channelIcon}>{channel.icon}</Text>
+                      <Text style={styles.channelName}>{channel.name}</Text>
+                      <Text style={styles.channelMembers}>{channel.members}人</Text>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.emptyContentContainer}>
+                    <Text style={styles.emptyContentText}>
+                      現在表示できるチャンネルはありません。
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+            
+            {/* 人気のスレッド */}
+            <View style={styles.popularSection}>
+              <Text style={styles.sectionTitle}>人気のスレッド</Text>
+              {filteredThreads.length > 0 ? (
+                filteredThreads.map(thread => (
                   <TouchableOpacity 
-                    key={channel.id} 
-                    style={[styles.channelCard, { borderColor: `${themeColor}50` }]}
-                    onPress={() => router.push(`/channels/${channel.id}`)}
+                    key={thread.id} 
+                    style={[styles.threadCard, { borderColor: `${themeColor}30` }]}
+                    onPress={() => console.log(`スレッド ${thread.id} が選択されました`)}
                   >
-                    <Text style={styles.channelIcon}>{channel.icon}</Text>
-                    <Text style={styles.channelName}>{channel.name}</Text>
-                    <Text style={styles.channelMembers}>{channel.members}人</Text>
+                    <Text style={styles.threadTitle}>{thread.title}</Text>
+                    <Text style={styles.threadChannel}>{thread.channel}</Text>
+                    <View style={styles.threadStats}>
+                      <View style={styles.threadStat}>
+                        <Ionicons name="chatbubble-outline" size={16} color={themeColor} />
+                        <Text style={styles.threadStatText}>{thread.comments}</Text>
+                      </View>
+                      <View style={styles.threadStat}>
+                        <Ionicons name="heart-outline" size={16} color={themeColor} />
+                        <Text style={styles.threadStatText}>{thread.likes}</Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
                 ))
               ) : (
                 <View style={styles.emptyContentContainer}>
                   <Text style={styles.emptyContentText}>
-                    現在表示できるチャンネルはありません。
+                    現在表示できるスレッドはありません。
                   </Text>
                 </View>
               )}
-            </ScrollView>
-          </View>
-          
-          {/* 人気のスレッド */}
-          <View style={styles.popularSection}>
-            <Text style={styles.sectionTitle}>人気のスレッド</Text>
-            {filteredThreads.length > 0 ? (
-              filteredThreads.map(thread => (
-                <TouchableOpacity 
-                  key={thread.id} 
-                  style={[styles.threadCard, { borderColor: `${themeColor}30` }]}
-                  onPress={() => console.log(`スレッド ${thread.id} が選択されました`)}
-                >
-                  <Text style={styles.threadTitle}>{thread.title}</Text>
-                  <Text style={styles.threadChannel}>{thread.channel}</Text>
-                  <View style={styles.threadStats}>
-                    <View style={styles.threadStat}>
-                      <Ionicons name="chatbubble-outline" size={16} color={themeColor} />
-                      <Text style={styles.threadStatText}>{thread.comments}</Text>
-                    </View>
-                    <View style={styles.threadStat}>
-                      <Ionicons name="heart-outline" size={16} color={themeColor} />
-                      <Text style={styles.threadStatText}>{thread.likes}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <View style={styles.emptyContentContainer}>
-                <Text style={styles.emptyContentText}>
-                  現在表示できるスレッドはありません。
-                </Text>
-              </View>
-            )}
-          </View>
-          
-          {/* 最近のアクティビティ */}
-          <View style={styles.activitySection}>
-            <Text style={styles.sectionTitle}>最近のアクティビティ</Text>
-            {filteredActivities.length > 0 ? (
-              filteredActivities.map(activity => (
-                <View key={activity.id} style={styles.activityItem}>
-                  <View style={[styles.activityIconContainer, { backgroundColor: `${themeColor}40` }]}>
-                    <Ionicons 
-                      name={
-                        activity.type === 'thread' ? 'create-outline' : 
-                        activity.type === 'comment' ? 'chatbubble-outline' : 'heart-outline'
-                      } 
-                      size={20} 
-                      color={themeColor} 
-                    />
-                  </View>
-                  <View style={styles.activityContent}>
-                    <Text style={styles.activityTitle}>{activity.title}</Text>
-                    <Text style={styles.activityMeta}>
-                      {activity.type === 'thread' ? 'スレッドを作成' : 
-                       activity.type === 'comment' ? 'コメントしました' : 'いいねしました'}
-                      • {activity.channel} • {activity.time}
-                    </Text>
-                  </View>
-                </View>
-              ))
-            ) : (
-              <View style={styles.emptyContentContainer}>
-                <Text style={styles.emptyContentText}>
-                  最近のアクティビティはありません。
-                </Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
-        
-        {/* サイドメニュー */}
-        {isMenuOpen && (
-          <View style={styles.menuOverlay}>
-            <TouchableOpacity 
-              style={styles.menuCloseArea} 
-              onPress={closeMenu}
-              activeOpacity={1}
-            />
-            <View style={styles.sideMenu}>
-              {/* ユーザー情報 */}
-              <View style={[styles.menuUserSection, { borderBottomColor: `${themeColor}40` }]}>
-                <Image 
-                  source={{ uri: userState?.avatarUrl || 'https://via.placeholder.com/100' }} 
-                  style={styles.menuUserAvatar} 
-                />
-                <Text style={styles.menuUserName}>{userState?.username || 'ゲスト'}</Text>
-                <Text style={styles.menuUserEmail}>{userState?.bio || 'ログインしていません'}</Text>
-              </View>
-              
-              {/* メニュー項目 */}
-              <ScrollView style={styles.menuItems}>
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={() => {
-                    closeMenu();
-                    router.push('/');
-                  }}
-                >
-                  <Ionicons name="home-outline" size={24} color={themeColor} />
-                  <Text style={[styles.menuItemText, { color: themeColor }]}>ホーム</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={() => {
-                    closeMenu();
-                    navigateToChannels();
-                  }}
-                >
-                  <Ionicons name="list-outline" size={24} color="#fff" />
-                  <Text style={styles.menuItemText}>チャンネル一覧</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={() => {
-                    closeMenu();
-                    navigateToProfile();
-                  }}
-                >
-                  <Ionicons name="person-outline" size={24} color="#fff" />
-                  <Text style={styles.menuItemText}>プロフィール</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={() => {
-                    closeMenu();
-                    // 通知画面へのナビゲーション（現在は未実装）
-                    console.log('通知画面へ移動');
-                  }}
-                >
-                  <Ionicons name="notifications-outline" size={24} color="#fff" />
-                  <Text style={styles.menuItemText}>通知</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={() => {
-                    closeMenu();
-                    // ブックマーク画面へのナビゲーション（現在は未実装）
-                    console.log('ブックマーク画面へ移動');
-                  }}
-                >
-                  <Ionicons name="bookmark-outline" size={24} color="#fff" />
-                  <Text style={styles.menuItemText}>ブックマーク</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={() => {
-                    closeMenu();
-                    navigateToSettings();
-                  }}
-                >
-                  <Ionicons name="settings-outline" size={24} color="#fff" />
-                  <Text style={styles.menuItemText}>設定</Text>
-                </TouchableOpacity>
-                
-                <View style={[styles.menuDivider, { backgroundColor: `${themeColor}30` }]} />
-                
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={() => {
-                    closeMenu();
-                    // ヘルプ画面へのナビゲーション（現在は未実装）
-                    console.log('ヘルプ画面へ移動');
-                  }}
-                >
-                  <Ionicons name="help-circle-outline" size={24} color="#fff" />
-                  <Text style={styles.menuItemText}>ヘルプ</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={() => {
-                    closeMenu();
-                    // ログアウト処理
-                    console.log('ログアウト');
-                  }}
-                >
-                  <Ionicons name="log-out-outline" size={24} color="#fff" />
-                  <Text style={styles.menuItemText}>ログアウト</Text>
-                </TouchableOpacity>
-              </ScrollView>
-              
-              {/* バージョン情報 */}
-              <Text style={styles.menuVersion}>バージョン 1.0.0</Text>
             </View>
-          </View>
-        )}
-      </SafeAreaView>
-    </MusicGradientBackground>
+            
+            {/* 最近のアクティビティ */}
+            <View style={styles.activitySection}>
+              <Text style={styles.sectionTitle}>最近のアクティビティ</Text>
+              {filteredActivities.length > 0 ? (
+                filteredActivities.map(activity => (
+                  <View key={activity.id} style={styles.activityItem}>
+                    <View style={[styles.activityIconContainer, { backgroundColor: `${themeColor}40` }]}>
+                      <Ionicons 
+                        name={
+                          activity.type === 'thread' ? 'create-outline' : 
+                          activity.type === 'comment' ? 'chatbubble-outline' : 'heart-outline'
+                        } 
+                        size={20} 
+                        color={themeColor} 
+                      />
+                    </View>
+                    <View style={styles.activityContent}>
+                      <Text style={styles.activityTitle}>{activity.title}</Text>
+                      <Text style={styles.activityMeta}>
+                        {activity.type === 'thread' ? 'スレッドを作成' : 
+                         activity.type === 'comment' ? 'コメントしました' : 'いいねしました'}
+                        • {activity.channel} • {activity.time}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.emptyContentContainer}>
+                  <Text style={styles.emptyContentText}>
+                    最近のアクティビティはありません。
+                  </Text>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+          
+          {/* サイドメニュー */}
+          {isMenuOpen && (
+            <View style={styles.menuOverlay}>
+              <TouchableOpacity 
+                style={styles.menuCloseArea} 
+                onPress={closeMenu}
+                activeOpacity={1}
+              />
+              <View style={styles.sideMenu}>
+                {/* ユーザー情報 */}
+                <View style={[styles.menuUserSection, { borderBottomColor: `${themeColor}40` }]}>
+                  <Image 
+                    source={{ uri: userState?.avatarUrl || 'https://via.placeholder.com/100' }} 
+                    style={styles.menuUserAvatar} 
+                  />
+                  <Text style={styles.menuUserName}>{userState?.username || 'ゲスト'}</Text>
+                  <Text style={styles.menuUserEmail}>{userState?.bio || 'ログインしていません'}</Text>
+                </View>
+                
+                {/* メニュー項目 */}
+                <ScrollView style={styles.menuItems}>
+                  <TouchableOpacity 
+                    style={styles.menuItem} 
+                    onPress={() => {
+                      closeMenu();
+                      router.push('/');
+                    }}
+                  >
+                    <Ionicons name="home-outline" size={24} color={themeColor} />
+                    <Text style={[styles.menuItemText, { color: themeColor }]}>ホーム</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.menuItem} 
+                    onPress={() => {
+                      closeMenu();
+                      navigateToChannels();
+                    }}
+                  >
+                    <Ionicons name="list-outline" size={24} color="#fff" />
+                    <Text style={styles.menuItemText}>チャンネル一覧</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.menuItem} 
+                    onPress={() => {
+                      closeMenu();
+                      navigateToProfile();
+                    }}
+                  >
+                    <Ionicons name="person-outline" size={24} color="#fff" />
+                    <Text style={styles.menuItemText}>プロフィール</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.menuItem} 
+                    onPress={() => {
+                      closeMenu();
+                      // 通知画面へのナビゲーション（現在は未実装）
+                      console.log('通知画面へ移動');
+                    }}
+                  >
+                    <Ionicons name="notifications-outline" size={24} color="#fff" />
+                    <Text style={styles.menuItemText}>通知</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.menuItem} 
+                    onPress={() => {
+                      closeMenu();
+                      // ブックマーク画面へのナビゲーション（現在は未実装）
+                      console.log('ブックマーク画面へ移動');
+                    }}
+                  >
+                    <Ionicons name="bookmark-outline" size={24} color="#fff" />
+                    <Text style={styles.menuItemText}>ブックマーク</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.menuItem} 
+                    onPress={() => {
+                      closeMenu();
+                      navigateToSettings();
+                    }}
+                  >
+                    <Ionicons name="settings-outline" size={24} color="#fff" />
+                    <Text style={styles.menuItemText}>設定</Text>
+                  </TouchableOpacity>
+                  
+                  <View style={[styles.menuDivider, { backgroundColor: `${themeColor}30` }]} />
+                  
+                  <TouchableOpacity 
+                    style={styles.menuItem} 
+                    onPress={() => {
+                      closeMenu();
+                      // ヘルプ画面へのナビゲーション（現在は未実装）
+                      console.log('ヘルプ画面へ移動');
+                    }}
+                  >
+                    <Ionicons name="help-circle-outline" size={24} color="#fff" />
+                    <Text style={styles.menuItemText}>ヘルプ</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.menuItem} 
+                    onPress={() => {
+                      closeMenu();
+                      // ログアウト処理
+                      console.log('ログアウト');
+                    }}
+                  >
+                    <Ionicons name="log-out-outline" size={24} color="#fff" />
+                    <Text style={styles.menuItemText}>ログアウト</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+                
+                {/* バージョン情報 */}
+                <Text style={styles.menuVersion}>バージョン 1.0.0</Text>
+              </View>
+            </View>
+          )}
+        </SafeAreaView>
+      </MusicGradientBackground>
+    </View>
   );
 }
 

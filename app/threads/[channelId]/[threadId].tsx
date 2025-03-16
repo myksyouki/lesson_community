@@ -9,8 +9,8 @@ import { useUser } from '../../../contexts/UserContext';
 import { useData } from '../../../contexts/DataContext';
 import { useSideMenu } from '../../../contexts/SideMenuContext';
 import MusicGradientBackground from '../../../components/MusicGradientBackground';
-import ThreadDetail, { BreadcrumbNavigation, ThreadProps } from '../../../components/ThreadDetail';
-import ThreadComment, { CommentProps } from '../../../components/ThreadComment';
+import ThreadDetail, { ThreadDetailProps as ThreadProps } from '../../../components/ThreadDetail';
+import ThreadComment, { ThreadCommentProps as CommentProps } from '../../../components/ThreadComment';
 import CommentInput from '../../../components/CommentInput';
 import { 
   collection, 
@@ -96,11 +96,53 @@ const SAMPLE_CHANNEL = {
   name: 'フルート愛好会'
 };
 
+// BreadcrumbNavigationコンポーネントを修正
+const BreadcrumbNavigation = ({ 
+  channelName, 
+  threadTitle, 
+  onNavigateHome,
+  onNavigateChannel,
+  onNavigateChannelList,
+  router
+}: { 
+  channelName: string;
+  threadTitle: string;
+  onNavigateHome: () => void;
+  onNavigateChannel: () => void;
+  onNavigateChannelList: () => void;
+  router: any;
+}) => (
+  <View style={styles.breadcrumbContainer}>
+    <TouchableOpacity 
+      style={styles.breadcrumbItem} 
+      onPress={() => router.push('/')}
+    >
+      <Ionicons name="home-outline" size={16} color="#fff" />
+      <Text style={styles.breadcrumbText}>HOME</Text>
+    </TouchableOpacity>
+    <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.6)" />
+    <TouchableOpacity style={styles.breadcrumbItem} onPress={onNavigateChannelList}>
+      <Text style={styles.breadcrumbText}>チャンネル一覧</Text>
+    </TouchableOpacity>
+    <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.6)" />
+    <TouchableOpacity style={styles.breadcrumbItem} onPress={onNavigateChannel}>
+      <Text style={styles.breadcrumbText}>{channelName}</Text>
+    </TouchableOpacity>
+    <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.6)" />
+    <View style={[styles.breadcrumbItem, styles.breadcrumbActive]}>
+      <Text style={[styles.breadcrumbText, styles.breadcrumbActiveText]} numberOfLines={1}>
+        {threadTitle}
+      </Text>
+    </View>
+  </View>
+);
+
 // スレッド詳細画面
 export default function ThreadDetailScreen() {
   const params = useLocalSearchParams();
   const channelId = typeof params.channelId === 'string' ? params.channelId : '';
   const threadId = typeof params.threadId === 'string' ? params.threadId : '';
+  const categoryId = typeof params.categoryId === 'string' ? params.categoryId : '';
   const router = useRouter();
   const { userState } = useUser();
   const { openMenu } = useSideMenu();
@@ -121,13 +163,11 @@ export default function ThreadDetailScreen() {
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // 右スワイプを検出（x方向の移動が20以上、y方向の移動が20未満）
         return gestureState.dx > 20 && Math.abs(gestureState.dy) < 20;
       },
       onPanResponderRelease: (_, gestureState) => {
-        // 右へのスワイプが50px以上なら前の画面に戻る
         if (gestureState.dx > 50) {
-          handleBack();
+          router.back();
         }
       },
     })
@@ -141,7 +181,7 @@ export default function ThreadDetailScreen() {
         const currentUser = auth.currentUser;
         
         // チャンネル情報を取得
-        const channelRef = doc(db, 'channels', channelId as string);
+        const channelRef = doc(db, `categories/${categoryId}/channels`, channelId as string);
         const channelSnap = await getDoc(channelRef);
         
         if (!channelSnap.exists()) {
@@ -155,7 +195,7 @@ export default function ThreadDetailScreen() {
         });
         
         // スレッド情報を取得
-        const threadRef = doc(db, 'threads', threadId as string);
+        const threadRef = doc(db, `categories/${categoryId}/threads`, threadId as string);
         const threadSnap = await getDoc(threadRef);
         
         if (!threadSnap.exists()) {
@@ -167,11 +207,10 @@ export default function ThreadDetailScreen() {
         // いいね状態をチェック
         let isLiked = false;
         if (currentUser) {
-          const likeRef = collection(db, 'likes');
+          const likeRef = collection(db, `categories/${categoryId}/threads/${threadId}/likes`);
           const likeQuery = query(
             likeRef,
-            where('userId', '==', currentUser.uid),
-            where('threadId', '==', threadId)
+            where('userId', '==', currentUser.uid)
           );
           const likeSnap = await getDocs(likeQuery);
           isLiked = !likeSnap.empty;
@@ -199,10 +238,9 @@ export default function ThreadDetailScreen() {
         setThread(threadProps);
         
         // コメントを取得
-        const commentsRef = collection(db, 'comments');
+        const commentsRef = collection(db, `categories/${categoryId}/threads/${threadId}/comments`);
         const commentsQuery = query(
           commentsRef,
-          where('threadId', '==', threadId),
           orderBy('createdAt', 'asc')
         );
         const commentsSnap = await getDocs(commentsQuery);
@@ -210,25 +248,24 @@ export default function ThreadDetailScreen() {
         // コメントのデータを変換
         const commentsData: CommentProps[] = await Promise.all(
           commentsSnap.docs.map(async (doc) => {
-          const data = doc.data();
-          
+            const data = doc.data();
+            
             // いいね状態をチェック
             let commentIsLiked = false;
             if (currentUser) {
-              const commentLikeRef = collection(db, 'commentLikes');
+              const commentLikeRef = collection(db, `categories/${categoryId}/threads/${threadId}/comments/${doc.id}/likes`);
               const commentLikeQuery = query(
                 commentLikeRef,
-                where('userId', '==', currentUser.uid),
-                where('commentId', '==', doc.id)
+                where('userId', '==', currentUser.uid)
               );
               const commentLikeSnap = await getDocs(commentLikeQuery);
               commentIsLiked = !commentLikeSnap.empty;
-          }
-          
-          return {
-            id: doc.id,
-            content: data.content,
-            author: {
+            }
+            
+            return {
+              id: doc.id,
+              content: data.content,
+              author: {
                 id: data.authorId,
                 name: data.authorName,
                 avatar: data.authorAvatar || '',
@@ -256,10 +293,10 @@ export default function ThreadDetailScreen() {
       }
     };
     
-    if (channelId && threadId) {
+    if (categoryId && channelId && threadId) {
       fetchData();
     }
-  }, [channelId, threadId]);
+  }, [categoryId, channelId, threadId]);
   
   // イベントハンドラ
   const handleBack = () => {
@@ -290,12 +327,11 @@ export default function ThreadDetailScreen() {
         return;
       }
       
-      const threadRef = doc(db, 'threads', thread.id);
-      const likesRef = collection(db, 'likes');
+      const threadRef = doc(db, `categories/${categoryId}/threads`, thread.id);
+      const likesRef = collection(db, `categories/${categoryId}/threads/${thread.id}/likes`);
       const likeQuery = query(
         likesRef,
-        where('userId', '==', currentUser.uid),
-        where('threadId', '==', thread.id)
+        where('userId', '==', currentUser.uid)
       );
       
       const likeSnap = await getDocs(likeQuery);
@@ -304,7 +340,6 @@ export default function ThreadDetailScreen() {
         // いいねを追加
         await addDoc(likesRef, {
           userId: currentUser.uid,
-          threadId: thread.id,
           createdAt: serverTimestamp()
         });
         
@@ -320,7 +355,7 @@ export default function ThreadDetailScreen() {
       } else {
         // いいねを削除
         const likeDoc = likeSnap.docs[0];
-        const likeRef = doc(db, 'likes', likeDoc.id);
+        const likeRef = doc(db, `categories/${categoryId}/threads/${thread.id}/likes`, likeDoc.id);
         
         await updateDoc(threadRef, {
           likeCount: increment(-1)
@@ -361,12 +396,11 @@ export default function ThreadDetailScreen() {
         return;
       }
       
-      const commentRef = doc(db, 'comments', commentId);
-      const commentLikesRef = collection(db, 'commentLikes');
+      const commentRef = doc(db, `categories/${categoryId}/threads/${threadId}/comments`, commentId);
+      const commentLikesRef = collection(db, `categories/${categoryId}/threads/${threadId}/comments/${commentId}/likes`);
       const likeQuery = query(
         commentLikesRef,
-        where('userId', '==', currentUser.uid),
-        where('commentId', '==', commentId)
+        where('userId', '==', currentUser.uid)
       );
       
       const likeSnap = await getDocs(likeQuery);
@@ -375,7 +409,6 @@ export default function ThreadDetailScreen() {
         // いいねを追加
         await addDoc(commentLikesRef, {
           userId: currentUser.uid,
-          commentId: commentId,
           createdAt: serverTimestamp()
         });
         
@@ -398,7 +431,7 @@ export default function ThreadDetailScreen() {
       } else {
         // いいねを削除
         const likeDoc = likeSnap.docs[0];
-        const likeRef = doc(db, 'commentLikes', likeDoc.id);
+        const likeRef = doc(db, `categories/${categoryId}/threads/${threadId}/comments/${commentId}/likes`, likeDoc.id);
         
         await updateDoc(commentRef, {
           likeCount: increment(-1)
@@ -407,7 +440,7 @@ export default function ThreadDetailScreen() {
         setComments(prevComments => 
           prevComments.map(comment => {
             if (comment.id === commentId) {
-          return {
+              return {
                 ...comment,
                 isLiked: false,
                 likes: comment.likes - 1
@@ -460,10 +493,11 @@ export default function ThreadDetailScreen() {
       }
       
       // コメントをFirestoreに追加
-      const docRef = await addDoc(collection(db, 'comments'), commentData);
+      const commentsRef = collection(db, `categories/${categoryId}/threads/${thread.id}/comments`);
+      const docRef = await addDoc(commentsRef, commentData);
       
       // スレッドのコメント数を更新
-      const threadRef = doc(db, 'threads', thread.id);
+      const threadRef = doc(db, `categories/${categoryId}/threads`, thread.id);
       await updateDoc(threadRef, {
         commentCount: increment(1),
         lastActivity: serverTimestamp()
@@ -519,18 +553,24 @@ export default function ThreadDetailScreen() {
           />
           <Text style={styles.headerTitle}>スレッド詳細</Text>
           <IconButton
-            icon="bell-outline"
-            iconColor="#fff"
+            icon="notifications-outline"
             size={24}
-            onPress={() => console.log('通知ボタンが押されました')}
-                    />
-                  </View>
-                  
-        {/* 戻るボタン */}
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-          <Text style={styles.backButtonText}>戻る</Text>
-        </TouchableOpacity>
+            iconColor="#fff"
+            onPress={() => {}}
+          />
+        </View>
+        
+        {/* パンくずリスト */}
+        {channel && thread && (
+          <BreadcrumbNavigation 
+            channelName={channel.name}
+            threadTitle={thread.title}
+            onNavigateHome={handleNavigateHome}
+            onNavigateChannel={handleNavigateChannel}
+            onNavigateChannelList={handleNavigateChannelList}
+            router={router}
+          />
+        )}
         
         {/* ローディング表示 */}
         {isLoading ? (
@@ -548,67 +588,60 @@ export default function ThreadDetailScreen() {
               style={styles.scrollView}
               contentContainerStyle={styles.scrollViewContent}
             >
-              {/* パンくずナビゲーション */}
-              <BreadcrumbNavigation 
-                channelName={channel?.name || ''} 
-                threadTitle={thread.title} 
-                onNavigateHome={handleNavigateHome}
-                onNavigateChannel={handleNavigateChannel}
-                onNavigateChannelList={handleNavigateChannelList}
-              />
-              
-              {/* スレッド詳細 */}
-              <ThreadDetail 
-                thread={thread}
+              {/* スレッド本文 */}
+              <ThreadDetail
+                {...thread}
                 onLike={handleLikeThread}
                 onReply={handleReplyThread}
                 onShare={handleShareThread}
                 accentColor={accentColor}
               />
               
-              {/* コメント一覧 */}
-              <View style={styles.commentsContainer}>
-                {comments.length === 0 ? (
-                  <View style={styles.noCommentsContainer}>
-                    <Ionicons name="chatbubble-outline" size={40} color="#AAAAAA" />
-                    <Text style={styles.noCommentsText}>コメントはまだありません</Text>
-                    <Text style={styles.noCommentsSubText}>最初のコメントを投稿しましょう</Text>
-                    </View>
-                ) : (
-                  comments.map((comment) => (
-                    <ThreadComment 
-                      key={comment.id}
-                      comment={comment}
-                      onReply={handleReplyComment}
-                      onLike={handleLikeComment}
-                      onShare={handleShareComment}
-                      accentColor={accentColor}
-                      allComments={comments}
-                      isLastComment={comment.id === comments[comments.length - 1].id}
-                    />
-                  ))
-                )}
+              {/* コメントセクション */}
+              <View style={styles.commentsSection}>
+                <Text style={styles.commentsSectionTitle}>
+                  コメント {comments.length > 0 ? `(${comments.length})` : ''}
+                </Text>
+                
+                {comments.map((comment) => (
+                  <ThreadComment
+                    key={comment.id}
+                    {...comment}
+                    onLike={() => handleLikeComment(comment.id)}
+                    onReply={() => handleReplyComment(comment.id, comment.author.name)}
+                    onShare={() => handleShareComment(comment.id)}
+                    accentColor={accentColor}
+                    allComments={comments}
+                  />
+                ))}
+                
+                {comments.length === 0 && (
+                  <View style={styles.emptyComments}>
+                    <Text style={styles.emptyCommentsText}>
+                      まだコメントがありません。最初のコメントを投稿してみましょう！
+                    </Text>
                   </View>
+                )}
+              </View>
             </ScrollView>
             
-            {/* コメント入力フォーム */}
-            <CommentInput 
+            {/* コメント入力 */}
+            <CommentInput
               onSend={handleSendComment}
-              onAttachImage={() => console.log('画像添付')}
-              onCancel={replyingTo ? handleCancelReply : undefined}
               replyingTo={replyingTo}
-              accentColor={accentColor}
-              placeholder="コメントを入力..."
+              onCancel={handleCancelReply}
+              placeholder={
+                replyingTo
+                  ? `@${replyingTo.authorName}に返信`
+                  : 'コメントを入力...'
+              }
             />
           </KeyboardAvoidingView>
         ) : (
           <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={64} color="#FFFFFF" />
-            <Text style={styles.errorText}>スレッドが見つかりませんでした</Text>
-            <TouchableOpacity style={styles.returnButton} onPress={handleNavigateChannel}>
-              <Text style={styles.returnButtonText}>チャンネルに戻る</Text>
-                </TouchableOpacity>
-              </View>
+            <Ionicons name="alert-circle-outline" size={64} color="#fff" />
+            <Text style={styles.errorText}>{error || 'スレッドの読み込みに失敗しました'}</Text>
+          </View>
         )}
             </SafeAreaView>
     </MusicGradientBackground>
@@ -631,17 +664,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  backButtonText: {
-    marginLeft: 8,
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
   scrollView: {
     flex: 1,
   },
@@ -649,25 +671,24 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
-  commentsContainer: {
+  commentsSection: {
     marginTop: 16,
   },
-  noCommentsContainer: {
+  commentsSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  emptyComments: {
     alignItems: 'center',
     padding: 24,
     backgroundColor: 'rgba(30, 30, 30, 0.7)',
     borderRadius: 12,
   },
-  noCommentsText: {
-    marginTop: 12,
-    fontSize: 16,
-    fontWeight: 'bold',
+  emptyCommentsText: {
     color: '#FFFFFF',
-  },
-  noCommentsSubText: {
-    marginTop: 4,
-    fontSize: 14,
-    color: '#AAAAAA',
+    fontSize: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -691,16 +712,26 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
   },
-  returnButton: {
-    marginTop: 32,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 24,
+  breadcrumbContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
   },
-  returnButtonText: {
+  breadcrumbItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 4,
+  },
+  breadcrumbText: {
+    marginLeft: 4,
     color: '#FFFFFF',
     fontSize: 16,
+  },
+  breadcrumbActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+  },
+  breadcrumbActiveText: {
     fontWeight: 'bold',
   },
 }); 

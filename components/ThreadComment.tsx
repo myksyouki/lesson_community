@@ -2,9 +2,11 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Avatar, IconButton, Badge } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import { formatDistanceToNow } from 'date-fns';
+import { ja } from 'date-fns/locale';
 
 // コメントの型定義
-export interface CommentProps {
+export interface ThreadCommentProps {
   id: string;
   content: string;
   author: {
@@ -18,16 +20,16 @@ export interface CommentProps {
   replyToId?: string;
   replyToAuthor?: string;
   image?: string;
-  isThreadAuthor?: boolean;
+  isThreadAuthor: boolean;
 }
 
-interface ThreadCommentProps {
-  comment: CommentProps;
-  onReply: (commentId: string, authorName: string) => void;
-  onLike: (commentId: string) => void;
-  onShare: (commentId: string) => void;
+// コメントの表示用Props
+export interface ThreadCommentViewProps extends ThreadCommentProps {
+  onLike: () => void;
+  onReply: () => void;
+  onShare: () => void;
   accentColor: string;
-  allComments: CommentProps[];
+  allComments: ThreadCommentProps[];
   isLastComment?: boolean;
 }
 
@@ -53,38 +55,47 @@ const getRelativeTime = (date: Date): string => {
 };
 
 const ThreadComment = ({
-  comment,
-  onReply,
+  id,
+  content,
+  author,
+  createdAt,
+  likes,
+  isLiked,
+  replyToId,
+  replyToAuthor,
+  image,
+  isThreadAuthor,
   onLike,
+  onReply,
   onShare,
   accentColor,
   allComments,
   isLastComment = false
-}: ThreadCommentProps) => {
+}: ThreadCommentViewProps) => {
   // 返信先のコメントを取得
-  const replyToComment = comment.replyToId 
-    ? allComments.find(c => c.id === comment.replyToId) 
+  const replyToComment = replyToId 
+    ? allComments.find(c => c.id === replyToId) 
     : null;
 
   // 日付をフォーマット
-  const formattedDate = getRelativeTime(new Date(comment.createdAt));
+  const formattedDate = getRelativeTime(new Date(createdAt));
 
   return (
     <View style={[
       styles.container,
       isLastComment && styles.lastComment,
-      comment.isThreadAuthor && styles.authorComment
+      isThreadAuthor && styles.authorComment
     ]}>
       <Avatar.Image 
         size={36} 
-        source={{ uri: comment.author.avatar }} 
+        source={{ uri: author.avatar }} 
       />
       
       <View style={styles.contentContainer}>
         <View style={styles.header}>
           <View style={styles.authorInfo}>
-            <Text style={styles.authorName}>{comment.author.name}</Text>
-            {comment.isThreadAuthor && (
+            <Text style={styles.authorName}>{author.name}</Text>
+            {isThreadAuthor && (
               <Badge style={[styles.authorBadge, { backgroundColor: accentColor }]}>投稿者</Badge>
             )}
           </View>
@@ -102,11 +113,11 @@ const ThreadComment = ({
           </TouchableOpacity>
         )}
         
-        <Text style={styles.content}>{comment.content}</Text>
+        <Text style={styles.content}>{content}</Text>
         
-        {comment.image && (
+        {image && (
           <Image 
-            source={{ uri: comment.image }} 
+            source={{ uri: image }} 
             style={styles.image}
             resizeMode="cover"
           />
@@ -115,26 +126,26 @@ const ThreadComment = ({
         <View style={styles.actions}>
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => onLike(comment.id)}
+            onPress={onLike}
           >
             <Ionicons 
-              name={comment.isLiked ? "heart" : "heart-outline"} 
+              name={isLiked ? "heart" : "heart-outline"} 
               size={16} 
-              color={comment.isLiked ? accentColor : "#AAAAAA"} 
+              color={isLiked ? accentColor : "#AAAAAA"} 
             />
             <Text 
               style={[
                 styles.actionText,
-                comment.isLiked ? { color: accentColor } : {}
+                isLiked ? { color: accentColor } : {}
               ]}
             >
-              {comment.likes || 0}
+              {likes || 0}
             </Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => onReply(comment.id, comment.author.name)}
+            onPress={onReply}
           >
             <Ionicons name="chatbubble-outline" size={16} color="#AAAAAA" />
             <Text style={styles.actionText}>返信</Text>
@@ -142,7 +153,7 @@ const ThreadComment = ({
           
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => onShare(comment.id)}
+            onPress={onShare}
           >
             <Ionicons name="share-outline" size={16} color="#AAAAAA" />
             <Text style={styles.actionText}>共有</Text>

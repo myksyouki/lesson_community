@@ -203,7 +203,7 @@ export default function LoginScreen() {
       
       console.log('Googleログイン成功');
       // 正しいホーム画面にリダイレクト
-      router.replace('/(drawer)');
+      router.replace('/');
     } catch (error) {
       console.error('Google認証エラー:', error);
       // より具体的なエラーメッセージを表示
@@ -284,7 +284,7 @@ export default function LoginScreen() {
         console.log('アカウント作成成功');
       }
       // 正しいホーム画面にリダイレクト
-      router.replace('/(drawer)');
+      router.replace('/');
     } catch (error) {
       console.error('認証エラー:', error);
       // より具体的なエラーメッセージを表示
@@ -332,7 +332,7 @@ export default function LoginScreen() {
         // テストユーザーでログイン試行
         await signInWithEmailAndPassword(auth, testEmail, testPassword);
         console.log('テストログイン成功');
-        router.replace('/(drawer)');
+        router.replace('/');
       } catch (loginError) {
         console.log('テストユーザーが存在しないため作成します');
         
@@ -355,7 +355,7 @@ export default function LoginScreen() {
         
         await setDoc(doc(db, 'users', userCredential.user.uid), userData);
         console.log('テストユーザー作成およびログイン成功');
-        router.replace('/(drawer)');
+        router.replace('/');
       }
     } catch (error) {
       console.error('テストログインエラー:', error);
